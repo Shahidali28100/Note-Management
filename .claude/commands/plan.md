@@ -4,7 +4,7 @@ Steps:
 1. Read: openspec/changes/$ARGUMENTS/proposal.md
 2. Read: openspec/changes/$ARGUMENTS/specs/
 3. Read: docs/SDS.md (backend architecture, DB schema, API contracts, ADRs relevant to this ticket)
-4. Read: AGENTS.md + backend/CLAUDE.md (and frontend/CLAUDE.md if this ticket touches the UI)
+4. Read: AGENTS.md + apps/api/CLAUDE.md (and apps/web/CLAUDE.md if this ticket touches the UI)
 5. Scan existing codebase for reusable patterns (existing DbContext, existing services,
    existing DTOs/validators, existing repositories)
 6. Generate plan covering:

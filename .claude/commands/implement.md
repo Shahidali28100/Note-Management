@@ -4,7 +4,7 @@ Before writing ONE line of code, read:
 1. AGENTS.md
 2. docs/FRS.md (business rules for this feature — cite requirement IDs)
 3. docs/SDS.md (API contracts, DB schema, ADRs relevant to this feature)
-4. Domain CLAUDE.md (backend/CLAUDE.md and/or frontend/CLAUDE.md)
+4. Domain CLAUDE.md (apps/api/CLAUDE.md and/or apps/web/CLAUDE.md)
 5. openspec/changes/$ARGUMENTS/proposal.md
 6. openspec/changes/$ARGUMENTS/plan.md
 7. openspec/changes/$ARGUMENTS/tasks.md

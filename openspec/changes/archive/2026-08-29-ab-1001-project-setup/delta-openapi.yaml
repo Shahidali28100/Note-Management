@@ -1,0 +1,55 @@
+openapi: 3.0.3
+info:
+  title: Note Taking Application API — AB-1001 delta
+  version: "0.0.1"
+  description: >
+    AB-1001 introduces no business endpoints. This delta adds a single
+    scaffold-only health-check endpoint used to prove the backend boots and
+    can reach its configured database provider. All other API paths are
+    introduced by later tickets (AB-1002+).
+paths:
+  /api/health:
+    get:
+      operationId: getHealth
+      summary: Health check
+      description: >
+        Unauthenticated scaffold endpoint proving the API is running.
+        No business logic; not part of any FRS requirement.
+      tags: [health]
+      security: []
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        "500":
+          description: Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status, timestampUtc]
+      properties:
+        status:
+          type: string
+          enum: [healthy]
+        timestampUtc:
+          type: string
+          format: date-time
+    ProblemDetails:
+      type: object
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string

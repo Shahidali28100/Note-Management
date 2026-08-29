@@ -9,8 +9,8 @@ dotnet build                                   # build the API project
 dotnet run --project apps/api                  # run dev server
 dotnet test                                    # run MSTest unit + integration tests
 dotnet test --collect:"XPlat Code Coverage"    # with coverage
-dotnet ef migrations add <Name> --project apps/api
-dotnet ef database update --project apps/api
+dotnet ef migrations add <Name> --project apps/api/src/NoteManagement.Infrastructure --startup-project apps/api/src/NoteManagement.Api
+dotnet ef database update --project apps/api/src/NoteManagement.Infrastructure --startup-project apps/api/src/NoteManagement.Api
 dotnet format                                  # apply formatting before commit
 ```
 

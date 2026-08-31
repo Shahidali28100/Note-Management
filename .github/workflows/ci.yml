@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  frontend:
+    name: Frontend (lint, build, test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.14.0"
+      - name: Enable corepack
+        run: corepack enable
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm lint --max-warnings 0
+      - name: Build
+        run: pnpm build
+      - name: Test
+        run: pnpm test
+
+  backend:
+    name: Backend (build, migrate, test)
+    # windows-latest ships SQL Server Express LocalDB preinstalled — matches the
+    # LocalDB dev-environment decision exactly, no separate SQL Server service container needed.
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+      - name: Restore local tools
+        run: dotnet tool restore
+      - name: Provision local dev config
+        # appsettings.Development.json is gitignored (SDS §64) since it's the per-developer
+        # local file; the committed .example has no real secret (LocalDB uses Windows
+        # Integrated auth, no password) so it's safe to materialize as-is for CI.
+        run: Copy-Item src/NoteManagement.Api/appsettings.Development.json.example src/NoteManagement.Api/appsettings.Development.json
+      - name: Restore
+        run: dotnet restore NoteManagement.sln
+      - name: Apply migrations
+        run: dotnet ef database update --project src/NoteManagement.Infrastructure --startup-project src/NoteManagement.Api
+      - name: Build
+        run: dotnet build NoteManagement.sln --no-restore
+      - name: Test
+        run: dotnet test NoteManagement.sln --no-build --collect:"XPlat Code Coverage"

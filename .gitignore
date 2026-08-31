@@ -482,3 +482,8 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Local dev secrets — connection strings, JWT keys, etc. (SDS §64: never commit secrets).
+# Committed *.example templates are NOT matched by this pattern.
+apps/api/**/appsettings.Development.json
+apps/api/**/appsettings.Local.json

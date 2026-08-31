@@ -1,0 +1,22 @@
+{
+  "name": "note-management",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@11.24.0",
+  "engines": {
+    "node": ">=22.14.0"
+  },
+  "scripts": {
+    "prepare": "husky",
+    "build": "pnpm run build:shared && pnpm run build:web",
+    "build:shared": "pnpm --filter @repo/shared exec tsc --noEmit",
+    "build:web": "pnpm --filter web run build",
+    "lint": "pnpm --filter web run lint",
+    "test": "pnpm --filter web run test"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "21.2.2",
+    "@commitlint/config-conventional": "21.2.2",
+    "husky": "9.1.7"
+  }
+}

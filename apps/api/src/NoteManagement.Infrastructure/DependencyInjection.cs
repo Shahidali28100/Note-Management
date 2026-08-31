@@ -2,8 +2,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using NoteManagement.Application.Interfaces;
+using NoteManagement.Infrastructure.Authentication;
 using NoteManagement.Infrastructure.Data;
 using NoteManagement.Infrastructure.HealthChecks;
+using NoteManagement.Infrastructure.Repositories;
 
 namespace NoteManagement.Infrastructure;
 
@@ -21,6 +23,25 @@ public static class InfrastructureServiceCollectionExtensions
                 sqlServerOptions => sqlServerOptions.MigrationsAssembly(typeof(ApplicationDbContext).Assembly.FullName)));
 
         services.AddScoped<IDatabaseHealthChecker, DatabaseHealthChecker>();
+
+        // AB-1002: auth persistence + crypto primitives.
+        services.AddScoped<IUnitOfWork, UnitOfWork>();
+        services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+        services.AddScoped<IPasswordHasher, PasswordHasher>();
+
+        var jwtSigningKey = configuration["Jwt:SigningKey"]
+            ?? throw new InvalidOperationException(
+                "Configuration 'Jwt:SigningKey' not found. Copy appsettings.Development.json.example to appsettings.Development.json and fill it in.");
+        var jwtIssuer = configuration["Jwt:Issuer"]
+            ?? throw new InvalidOperationException("Configuration 'Jwt:Issuer' not found.");
+        var jwtAudience = configuration["Jwt:Audience"]
+            ?? throw new InvalidOperationException("Configuration 'Jwt:Audience' not found.");
+        var jwtOptions = new JwtOptions(jwtSigningKey, jwtIssuer, jwtAudience, TimeSpan.FromMinutes(15));
+
+        // Stateless once JwtOptions is built — safe as singletons.
+        services.AddSingleton<IJwtTokenGenerator>(new JwtTokenGenerator(jwtOptions));
+        services.AddSingleton<IRefreshTokenSecretService, RefreshTokenSecretService>();
 
         return services;
     }

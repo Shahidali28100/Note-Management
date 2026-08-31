@@ -1,0 +1,18 @@
+// Shared TypeScript contracts (DTOs, Zod schemas, pagination/error types) consumed by apps/web.
+// See packages/shared/CLAUDE.md — this package never redeclares a type apps/web already has,
+// and the backend (apps/api, C#) holds the authoritative implementation these types mirror.
+
+// AB-1002 — Auth DTOs + Zod schemas (SDS §55/§81). Consumed starting AB-1010 (frontend auth).
+// Only the schema *values* are re-exported here — their types already flow through
+// ./types/auth (which re-derives them via z.infer<>), so wildcard-exporting both would
+// duplicate every type name and fail to compile.
+export {
+  registerRequestSchema,
+  userResponseSchema,
+  loginRequestSchema,
+  authTokensResponseSchema,
+  refreshRequestSchema,
+  logoutRequestSchema,
+} from './schemas/auth';
+export * from './types/auth';
+

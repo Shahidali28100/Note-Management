@@ -1,0 +1,262 @@
+openapi: 3.0.3
+info:
+  title: Note Taking Application API — AB-1002 delta
+  version: "0.2.0"
+  description: >
+    AB-1002 introduces authentication: registration, password-based login,
+    JWT access tokens, refresh-token rotation with reuse detection, logout,
+    and a protected "current user" lookup used to exercise JWT validation
+    end-to-end. Forgot-password / OTP reset are explicitly out of scope —
+    see AB-1003.
+paths:
+  /api/auth/register:
+    post:
+      operationId: register
+      summary: Register a new user account
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        "201":
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        "400":
+          description: Validation failed (missing field, invalid email, or password below policy)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        "409":
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /api/auth/login:
+    post:
+      operationId: login
+      summary: Authenticate with email and password
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        "200":
+          description: Authenticated — access and refresh tokens issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokensResponse'
+        "400":
+          description: Validation failed (missing field, malformed email)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        "401":
+          description: Incorrect email or password (generic — does not reveal which)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /api/auth/refresh:
+    post:
+      operationId: refresh
+      summary: Exchange a valid refresh token for a new access/refresh token pair
+      description: >
+        Rotates the refresh token: the presented token is revoked and a new
+        one is issued in the same response. Presenting a token that was
+        already revoked (by a prior refresh, or by logout) is treated as
+        theft evidence and revokes every other active refresh token for
+        that user.
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        "200":
+          description: New access and refresh tokens issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokensResponse'
+        "400":
+          description: Missing refreshToken field
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        "401":
+          description: Refresh token is unknown, expired, or already revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /api/auth/logout:
+    post:
+      operationId: logout
+      summary: Revoke a single refresh token (ends one session)
+      description: >
+        Possession of a valid, unrevoked refresh token is itself the
+        credential for this endpoint — no access token is required, so a
+        client whose access token has already expired can still log out
+        cleanly. Only the presented token is revoked; the user's other
+        active sessions are unaffected.
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+      responses:
+        "204":
+          description: Refresh token revoked
+        "400":
+          description: Missing refreshToken field
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        "401":
+          description: Refresh token is unknown or already revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /api/auth/me:
+    get:
+      operationId: getCurrentUser
+      summary: Get the currently authenticated user's profile
+      description: >
+        Added by AB-1002 so JWT access-token validation (signature,
+        expiration, issuer, audience) has a real protected endpoint to
+        prove itself against end-to-end.
+      tags: [auth]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The authenticated user's profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        "401":
+          description: Missing, expired, or invalidly signed access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [name, email, password]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        email:
+          type: string
+          format: email
+          maxLength: 320
+        password:
+          type: string
+          minLength: 8
+          description: Must contain at least one letter and at least one digit.
+
+    UserResponse:
+      type: object
+      required: [id, name, email]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    AuthTokensResponse:
+      type: object
+      required: [accessToken, refreshToken, accessTokenExpiresAtUtc, tokenType]
+      properties:
+        accessToken:
+          type: string
+          description: JWT access token, signed HS256, 15-minute lifetime.
+        refreshToken:
+          type: string
+          description: Single-use opaque refresh token. Store the hash server-side only; this raw value is returned exactly once.
+        accessTokenExpiresAtUtc:
+          type: string
+          format: date-time
+        tokenType:
+          type: string
+          enum: [Bearer]
+
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+
+    LogoutRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+
+    ProblemDetails:
+      type: object
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string

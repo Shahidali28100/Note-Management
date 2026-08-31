@@ -206,6 +206,12 @@ PublishScripts/
 **/[Pp]ackages/*
 # except build/, which is used as an MSBuild target.
 !**/[Pp]ackages/build/
+# except this monorepo's own npm workspace package (packages/shared) — the rule above is a
+# generic NuGet-restore-folder pattern that also happens to match this repo's own top-level
+# packages/ directory name; discovered AB-1002 when the ticket's new packages/shared files
+# (Auth DTOs/Zod schemas) silently failed to show up in `git status`.
+!packages/shared/
+!packages/shared/**
 # Uncomment if necessary however generally it will be regenerated when needed
 #!**/[Pp]ackages/repositories.config
 # NuGet v3's project.json files produces more ignorable files

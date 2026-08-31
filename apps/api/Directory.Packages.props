@@ -13,6 +13,10 @@
     <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="8.0.0" />
     <!-- API docs (SDS §66) -->
     <PackageVersion Include="Swashbuckle.AspNetCore" Version="10.2.3" />
+    <!-- Auth (AB-1002): JWT validation middleware, JWT issuance, password hashing -->
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.30" />
+    <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="8.22.0" />
+    <PackageVersion Include="Microsoft.Extensions.Identity.Core" Version="8.0.30" />
     <!-- Testing (SDS §68/§69, MSTest) -->
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.30" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />

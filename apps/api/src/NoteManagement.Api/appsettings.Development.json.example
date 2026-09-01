@@ -3,6 +3,10 @@
   "ConnectionStrings": {
     "DefaultConnection": "Server=(localdb)\\MSSQLLocalDB;Database=NoteManagementDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True"
   },
+  "Jwt": {
+    "$comment": "Secret — never commit a real value. Generate a random 256-bit (32+ byte) key for local dev, e.g.: [Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Maximum 256 }))",
+    "SigningKey": "REPLACE_WITH_A_RANDOM_LOCAL_DEV_SECRET_AT_LEAST_32_BYTES"
+  },
   "Logging": {
     "LogLevel": {
       "Default": "Information",

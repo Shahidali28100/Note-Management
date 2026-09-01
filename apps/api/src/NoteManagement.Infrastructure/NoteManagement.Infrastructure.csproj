@@ -18,6 +18,10 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <!-- AB-1002: issues (signs) JWT access tokens -->
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
+    <!-- AB-1002: PasswordHasher<TUser> (PBKDF2-HMACSHA256) -->
+    <PackageReference Include="Microsoft.Extensions.Identity.Core" />
   </ItemGroup>
 
   <PropertyGroup>

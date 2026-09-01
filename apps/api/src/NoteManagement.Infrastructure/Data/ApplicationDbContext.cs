@@ -5,8 +5,8 @@ namespace NoteManagement.Infrastructure.Data;
 
 /// <summary>
 /// The application's single EF Core DbContext (SDS §6). AB-1002 introduced the first entities
-/// (Users, RefreshTokens); AB-1003 adds PasswordResetOtps; Notes/Tags/etc. follow in AB-1004+.
-/// Adding a DbSet beyond an approved ticket's scope would violate AGENTS.md §11.
+/// (Users, RefreshTokens); AB-1003 added PasswordResetOtps; AB-1004 adds Notes; Tags/etc. follow
+/// in AB-1005+. Adding a DbSet beyond an approved ticket's scope would violate AGENTS.md §11.
 /// </summary>
 public sealed class ApplicationDbContext : DbContext
 {
@@ -20,6 +20,8 @@ public sealed class ApplicationDbContext : DbContext
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
     public DbSet<PasswordResetOtp> PasswordResetOtps => Set<PasswordResetOtp>();
+
+    public DbSet<Note> Notes => Set<Note>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

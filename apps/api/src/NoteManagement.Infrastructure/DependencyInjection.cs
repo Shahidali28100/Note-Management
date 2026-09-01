@@ -34,6 +34,9 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IPasswordResetOtpRepository, PasswordResetOtpRepository>();
         services.AddSingleton<IOtpGenerator, OtpGenerator>(); // stateless, same treatment as IRefreshTokenSecretService
 
+        // AB-1004: notes persistence.
+        services.AddScoped<INoteRepository, NoteRepository>();
+
         var jwtSigningKey = configuration["Jwt:SigningKey"]
             ?? throw new InvalidOperationException(
                 "Configuration 'Jwt:SigningKey' not found. Copy appsettings.Development.json.example to appsettings.Development.json and fill it in.");

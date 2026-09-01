@@ -1,6 +1,7 @@
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi;
 using NoteManagement.Api.Middleware;
 using NoteManagement.Application;
 using NoteManagement.Infrastructure;
@@ -10,7 +11,32 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+
+// AB-1004 (user-requested fix): Swagger UI has had no Authorize button since AB-1002 introduced
+// the first [Authorize] endpoint — AddSwaggerGen() never registered a security scheme. Global
+// AddSecurityRequirement (not per-endpoint) means every operation in the doc shows a lock icon,
+// including [AllowAnonymous] ones (register/login/refresh/logout/forgot-password/reset-password)
+// — cosmetic only, actual authorization is still enforced entirely server-side by each action's
+// [Authorize]/[AllowAnonymous] attribute (SDS §29/AGENTS.md §7).
+builder.Services.AddSwaggerGen(options =>
+{
+    // Swashbuckle.AspNetCore v10's public API mirrors Microsoft.OpenApi 2.x — types moved from
+    // Microsoft.OpenApi.Models to Microsoft.OpenApi, and AddSecurityRequirement now takes a
+    // Func<OpenApiDocument, OpenApiSecurityRequirement> so the reference can point at the
+    // just-defined scheme within the document being built (verified against the v10 migration
+    // guide and BearerAuthentication sample, both under domaindrivendev/swashbuckle.aspnetcore).
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        Description = "Paste the access token returned by POST /api/auth/login or /api/auth/refresh (no \"Bearer \" prefix — Swashbuckle adds it).",
+    });
+    options.AddSecurityRequirement(document => new OpenApiSecurityRequirement
+    {
+        [new OpenApiSecuritySchemeReference("Bearer", document)] = [],
+    });
+});
 
 // Consistent error contract (SDS §39, ASP.NET Core Problem Details) for every controller,
 // not just this ticket's health check. AB-1002's typed-exception handler is registered ahead

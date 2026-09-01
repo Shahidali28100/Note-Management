@@ -21,6 +21,8 @@ public sealed class ProblemDetailsExceptionHandler : IExceptionHandler
             InvalidCredentialsException => (StatusCodes.Status401Unauthorized, "Invalid credentials"),
             InvalidRefreshTokenException => (StatusCodes.Status401Unauthorized, "Invalid refresh token"),
             InvalidPasswordResetException => (StatusCodes.Status400BadRequest, "Invalid password reset request"),
+            NoteNotFoundException => (StatusCodes.Status404NotFound, "Note not found"),
+            NoteNotDeletedException => (StatusCodes.Status409Conflict, "Note is not deleted"),
             _ => (0, string.Empty),
         };
 

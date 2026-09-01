@@ -10,6 +10,7 @@ public static class ApplicationServiceCollectionExtensions
     {
         services.AddScoped<IHealthCheckService, HealthCheckService>();
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<INoteService, NoteService>();
         return services;
     }
 }

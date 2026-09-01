@@ -19,3 +19,12 @@ export {
 } from './schemas/auth';
 export * from './types/auth';
 
+// AB-1004 — Note DTOs + Zod schemas (SDS §55/§81). Consumed starting AB-1011/AB-1012 (frontend notes UI).
+export {
+  createNoteRequestSchema,
+  updateNoteRequestSchema,
+  noteResponseSchema,
+  noteListResponseSchema,
+} from './schemas/notes';
+export * from './types/notes';
+

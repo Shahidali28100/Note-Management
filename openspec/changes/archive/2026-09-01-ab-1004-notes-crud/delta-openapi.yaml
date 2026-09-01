@@ -1,0 +1,307 @@
+openapi: 3.0.3
+info:
+  title: Note Taking Application API — AB-1004 delta
+  version: "0.4.0"
+  description: >
+    AB-1004 adds core Notes CRUD (create, single retrieval, fixed-default
+    listing, update, soft delete, recovery) as a new `notes` capability.
+    All five endpoints require a valid bearer access token. Tags,
+    client-driven pagination/sorting/filtering, version snapshots, search,
+    and sharing are explicitly out of scope for this delta (see proposal.md).
+paths:
+  /api/notes:
+    post:
+      operationId: createNote
+      summary: Create a note
+      description: >
+        Creates a note owned by the authenticated caller. Content is stored
+        as an opaque string with no structural validation.
+      tags: [notes]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateNoteRequest'
+      responses:
+        "201":
+          description: Note created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+        "400":
+          description: Validation failed (missing/invalid title or content)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        "401":
+          description: Missing or invalid access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+    get:
+      operationId: listNotes
+      summary: List the caller's active notes (fixed default view)
+      description: >
+        Returns the authenticated caller's non-deleted notes using the
+        standard list envelope. This delta ships a fixed default view only:
+        page 1, pageSize 20, sorted by updatedAt descending. No query
+        parameters are accepted in this delta — client-driven pagination,
+        sorting, and tag filtering are added by a later change.
+      tags: [notes]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The caller's active notes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoteListResponse'
+        "401":
+          description: Missing or invalid access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /api/notes/{id}:
+    get:
+      operationId: getNote
+      summary: Retrieve a single active note owned by the caller
+      description: >
+        Returns 404 identically whether the note does not exist, is
+        soft-deleted, or belongs to a different user.
+      tags: [notes]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/NoteId'
+      responses:
+        "200":
+          description: The requested note
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+        "401":
+          description: Missing or invalid access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        "404":
+          description: Note does not exist, is soft-deleted, or is not owned by the caller
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+    put:
+      operationId: updateNote
+      summary: Replace the title/content of an active note owned by the caller
+      description: >
+        Same validation as create. Sets updatedAt to the current UTC time.
+        Does not create a version snapshot (deferred to a later change).
+      tags: [notes]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/NoteId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateNoteRequest'
+      responses:
+        "200":
+          description: The updated note
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+        "400":
+          description: Validation failed (missing/invalid title or content)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        "401":
+          description: Missing or invalid access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        "404":
+          description: Note does not exist, is soft-deleted, or is not owned by the caller
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+    delete:
+      operationId: deleteNote
+      summary: Soft-delete an active note owned by the caller
+      description: >
+        Sets deletedAt to the current UTC time. Does not physically remove
+        the row. 404 identically whether the note does not exist, is
+        already soft-deleted, or belongs to a different user.
+      tags: [notes]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/NoteId'
+      responses:
+        "204":
+          description: Note soft-deleted
+        "401":
+          description: Missing or invalid access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        "404":
+          description: Note does not exist, is already soft-deleted, or is not owned by the caller
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /api/notes/{id}/restore:
+    post:
+      operationId: restoreNote
+      summary: Restore a soft-deleted note owned by the caller
+      description: >
+        Clears deletedAt. 404 if the note does not exist or is not owned by
+        the caller. 409 if the note exists, is owned by the caller, but is
+        not currently soft-deleted. Succeeds regardless of how long ago the
+        note was deleted — no automatic purge exists in this delta.
+      tags: [notes]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/NoteId'
+      responses:
+        "200":
+          description: The restored note
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+        "401":
+          description: Missing or invalid access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        "404":
+          description: Note does not exist or is not owned by the caller
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        "409":
+          description: Note exists and is owned by the caller but is not currently deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+components:
+  parameters:
+    NoteId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    CreateNoteRequest:
+      type: object
+      required: [title, content]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Trimmed length must be 1–200 characters.
+        content:
+          type: string
+          description: >
+            Opaque string, no structural validation in this delta. Must be
+            non-empty after trimming.
+
+    UpdateNoteRequest:
+      type: object
+      required: [title, content]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        content:
+          type: string
+
+    Note:
+      type: object
+      required: [id, title, content, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    NoteListResponse:
+      type: object
+      required: [items, page, pageSize, totalCount, totalPages]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Note'
+        page:
+          type: integer
+          example: 1
+        pageSize:
+          type: integer
+          example: 20
+        totalCount:
+          type: integer
+        totalPages:
+          type: integer
+
+    ProblemDetails:
+      type: object
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

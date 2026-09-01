@@ -17,6 +17,8 @@
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.30" />
     <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="8.22.0" />
     <PackageVersion Include="Microsoft.Extensions.Identity.Core" Version="8.0.30" />
+    <!-- Password reset (AB-1003): ILogger<AuthService> so ForgotPasswordAsync can log the OTP -->
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
     <!-- Testing (SDS §68/§69, MSTest) -->
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.30" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />

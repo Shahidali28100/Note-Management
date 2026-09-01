@@ -1,0 +1,129 @@
+openapi: 3.0.3
+info:
+  title: Note Taking Application API — AB-1003 delta
+  version: "0.3.0"
+  description: >
+    AB-1003 adds forgot-password (OTP issuance) and password-reset (OTP
+    redemption) to the authentication capability established in AB-1002.
+    Both endpoints are anonymous. forgot-password always returns 200 with
+    an identical generic message regardless of whether the email exists,
+    per the no-enumeration requirement in FRS-AUTH-006.
+paths:
+  /api/auth/forgot-password:
+    post:
+      operationId: forgotPassword
+      summary: Request a password-reset OTP
+      description: >
+        Always responds 200 with a generic message, whether or not the
+        email belongs to a registered user. When it does, a 6-digit OTP
+        is generated (10-minute expiry), any other outstanding OTP for
+        that user is invalidated, and the raw OTP is logged to the
+        console (no real email is sent). A repeat request within 60
+        seconds of the last OTP actually issued for that email does not
+        generate a new OTP, but still returns the same 200 response.
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordRequest'
+      responses:
+        "200":
+          description: >
+            Generic acknowledgement — identical whether or not the email
+            exists. Does not confirm whether an OTP was issued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericMessageResponse'
+        "400":
+          description: Validation failed (missing field or malformed email)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /api/auth/reset-password:
+    post:
+      operationId: resetPassword
+      summary: Reset a password using an email + OTP + new password
+      description: >
+        Every rejection reason (unknown email, wrong OTP, expired OTP,
+        already-used OTP, or an OTP locked out after 5 incorrect
+        attempts) returns the same generic 400 response, never revealing
+        which condition failed. On success, the OTP is consumed, every
+        other outstanding OTP for the user is invalidated, and every one
+        of the user's refresh tokens is revoked.
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+      responses:
+        "200":
+          description: Password reset — all of the user's refresh tokens are now revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericMessageResponse'
+        "400":
+          description: >
+            Validation failed (missing field, new password below policy),
+            or the email/OTP combination is invalid, expired, already
+            used, or locked out — all represented identically.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+components:
+  schemas:
+    ForgotPasswordRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 320
+
+    ResetPasswordRequest:
+      type: object
+      required: [email, otp, newPassword]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 320
+        otp:
+          type: string
+          description: 6-digit numeric one-time password.
+          pattern: '^[0-9]{6}$'
+        newPassword:
+          type: string
+          minLength: 8
+          description: Must contain at least one letter and at least one digit (same policy as registration).
+
+    GenericMessageResponse:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+
+    ProblemDetails:
+      type: object
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string

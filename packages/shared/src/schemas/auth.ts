@@ -46,3 +46,24 @@ export const logoutRequestSchema = z.object({
   refreshToken: z.string().min(1),
 });
 export type LogoutRequest = z.infer<typeof logoutRequestSchema>;
+
+// AB-1003 — forgot-password / OTP-based reset (FRS-AUTH-005/006).
+
+export const forgotPasswordRequestSchema = z.object({
+  email: z.string().email().max(320),
+});
+export type ForgotPasswordRequest = z.infer<typeof forgotPasswordRequestSchema>;
+
+export const resetPasswordRequestSchema = z.object({
+  email: z.string().email().max(320),
+  otp: z.string().regex(/^\d{6}$/, 'Code must be 6 digits.'),
+  newPassword: z
+    .string()
+    .min(8)
+    .regex(/[A-Za-z]/, 'Password must contain at least one letter.')
+    .regex(/[0-9]/, 'Password must contain at least one digit.'),
+});
+export type ResetPasswordRequest = z.infer<typeof resetPasswordRequestSchema>;
+
+export const messageResponseSchema = z.object({ message: z.string() });
+export type MessageResponse = z.infer<typeof messageResponseSchema>;

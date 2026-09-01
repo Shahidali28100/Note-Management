@@ -6,6 +6,7 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -22,10 +23,21 @@ public sealed class AuthControllerTests
     private const string TestConnectionString =
         "Server=(localdb)\\MSSQLLocalDB;Database=NoteManagementDb_AuthControllerTests;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True";
 
+    // AB-1003: a separate factory/database/client whose IOtpGenerator is substituted with a
+    // deterministic test double — the raw OTP is only ever logged, never returned via HTTP, so
+    // any test that needs to complete a full reset (not just check forgot-password's response
+    // shape) needs to know the code in advance. See SequentialOtpGenerator's remarks.
+    private const string OtpTestConnectionString =
+        "Server=(localdb)\\MSSQLLocalDB;Database=NoteManagementDb_AuthControllerTests_Otp;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True";
+
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
     private static WebApplicationFactory<Program> _factory = null!;
     private static HttpClient _client = null!;
+
+    private static WebApplicationFactory<Program> _otpFactory = null!;
+    private static HttpClient _otpClient = null!;
+    private static SequentialOtpGenerator _sequentialOtpGenerator = null!;
 
     [ClassInitialize]
     public static void ClassInitialize(TestContext context)
@@ -39,6 +51,19 @@ public sealed class AuthControllerTests
         dbContext.Database.Migrate();
 
         _client = _factory.CreateClient();
+
+        _sequentialOtpGenerator = new SequentialOtpGenerator();
+        _otpFactory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        {
+            builder.UseSetting("ConnectionStrings:DefaultConnection", OtpTestConnectionString);
+            builder.ConfigureTestServices(services => services.AddSingleton<IOtpGenerator>(_sequentialOtpGenerator));
+        });
+
+        using var otpScope = _otpFactory.Services.CreateScope();
+        var otpDbContext = otpScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        otpDbContext.Database.Migrate();
+
+        _otpClient = _otpFactory.CreateClient();
     }
 
     [ClassCleanup]
@@ -46,6 +71,8 @@ public sealed class AuthControllerTests
     {
         _client.Dispose();
         _factory.Dispose();
+        _otpClient.Dispose();
+        _otpFactory.Dispose();
     }
 
     // ---------- Register ----------
@@ -307,20 +334,180 @@ public sealed class AuthControllerTests
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
     }
 
+    // ---------- Forgot Password ----------
+
+    [TestMethod]
+    public async Task ForgotPassword_WithRegisteredEmail_Returns200()
+    {
+        var email = UniqueEmail();
+        await RegisterAsync(email);
+
+        var response = await _client.PostAsJsonAsync("/api/auth/forgot-password", new { email });
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task ForgotPassword_WithUnknownAndRegisteredEmail_ReturnsIdenticalResponse()
+    {
+        var registeredEmail = UniqueEmail();
+        await RegisterAsync(registeredEmail);
+        var unknownEmail = UniqueEmail();
+
+        var registeredResponse = await _client.PostAsJsonAsync("/api/auth/forgot-password", new { email = registeredEmail });
+        var unknownResponse = await _client.PostAsJsonAsync("/api/auth/forgot-password", new { email = unknownEmail });
+
+        Assert.AreEqual(registeredResponse.StatusCode, unknownResponse.StatusCode);
+        var registeredBody = await registeredResponse.Content.ReadAsStringAsync();
+        var unknownBody = await unknownResponse.Content.ReadAsStringAsync();
+        Assert.AreEqual(registeredBody, unknownBody);
+    }
+
+    [TestMethod]
+    public async Task ForgotPassword_CalledTwiceQuickly_ReturnsSame200BothTimes()
+    {
+        var email = UniqueEmail();
+        await RegisterAsync(email);
+
+        var first = await _client.PostAsJsonAsync("/api/auth/forgot-password", new { email });
+        var second = await _client.PostAsJsonAsync("/api/auth/forgot-password", new { email });
+
+        Assert.AreEqual(HttpStatusCode.OK, first.StatusCode);
+        Assert.AreEqual(HttpStatusCode.OK, second.StatusCode);
+    }
+
+    // ---------- Reset Password ----------
+    // These use _otpClient/_otpFactory (deterministic IOtpGenerator) so the test can submit the
+    // exact code it just had issued — see SequentialOtpGenerator's remarks.
+
+    [TestMethod]
+    public async Task ResetPassword_WithValidOtp_Returns200()
+    {
+        var email = UniqueEmail();
+        await RegisterAsync(email, client: _otpClient);
+        _sequentialOtpGenerator.Enqueue("111111");
+        await _otpClient.PostAsJsonAsync("/api/auth/forgot-password", new { email });
+
+        var response = await _otpClient.PostAsJsonAsync("/api/auth/reset-password", new { email, otp = "111111", newPassword = "NewPassw0rd1" });
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task ResetPassword_WithWrongOtp_Returns400()
+    {
+        var email = UniqueEmail();
+        await RegisterAsync(email, client: _otpClient);
+        _sequentialOtpGenerator.Enqueue("222222");
+        await _otpClient.PostAsJsonAsync("/api/auth/forgot-password", new { email });
+
+        var response = await _otpClient.PostAsJsonAsync("/api/auth/reset-password", new { email, otp = "000000", newPassword = "NewPassw0rd1" });
+
+        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task ResetPassword_WithSupersededOtp_Returns400()
+    {
+        var email = UniqueEmail();
+        await RegisterAsync(email, client: _otpClient);
+        _sequentialOtpGenerator.Enqueue("333333");
+        await _otpClient.PostAsJsonAsync("/api/auth/forgot-password", new { email }); // OTP #1
+
+        // No way to bypass the 60s reissue cooldown through the public API alone — backdate the
+        // just-issued OTP's CreatedAt directly via the DbContext (test fixture setup, mirrors
+        // Refresh_WithExpiredToken_Returns401's precedent below), so the next forgot-password
+        // call is treated as outside the cooldown window and actually supersedes it.
+        using (var scope = _otpFactory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            await dbContext.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE PasswordResetOtps SET CreatedAt = {DateTime.UtcNow.AddMinutes(-2)} WHERE UserId = (SELECT Id FROM Users WHERE Email = {email})");
+        }
+
+        _sequentialOtpGenerator.Enqueue("444444");
+        await _otpClient.PostAsJsonAsync("/api/auth/forgot-password", new { email }); // OTP #2 supersedes #1
+
+        var response = await _otpClient.PostAsJsonAsync("/api/auth/reset-password", new { email, otp = "333333", newPassword = "NewPassw0rd1" });
+
+        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task ResetPassword_CalledTwiceWithSameOtp_SecondCallReturns400()
+    {
+        var email = UniqueEmail();
+        await RegisterAsync(email, client: _otpClient);
+        _sequentialOtpGenerator.Enqueue("555555");
+        await _otpClient.PostAsJsonAsync("/api/auth/forgot-password", new { email });
+
+        var first = await _otpClient.PostAsJsonAsync("/api/auth/reset-password", new { email, otp = "555555", newPassword = "NewPassw0rd1" });
+        Assert.AreEqual(HttpStatusCode.OK, first.StatusCode);
+
+        var second = await _otpClient.PostAsJsonAsync("/api/auth/reset-password", new { email, otp = "555555", newPassword = "AnotherPass1" });
+        Assert.AreEqual(HttpStatusCode.BadRequest, second.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task ResetPassword_After5WrongAttempts_CorrectCodeSubsequentlyRejected()
+    {
+        var email = UniqueEmail();
+        await RegisterAsync(email, client: _otpClient);
+        _sequentialOtpGenerator.Enqueue("666666");
+        await _otpClient.PostAsJsonAsync("/api/auth/forgot-password", new { email });
+
+        for (var i = 0; i < 5; i++)
+        {
+            var wrongResponse = await _otpClient.PostAsJsonAsync("/api/auth/reset-password", new { email, otp = "000001", newPassword = "NewPassw0rd1" });
+            Assert.AreEqual(HttpStatusCode.BadRequest, wrongResponse.StatusCode);
+        }
+
+        var correctResponse = await _otpClient.PostAsJsonAsync("/api/auth/reset-password", new { email, otp = "666666", newPassword = "NewPassw0rd1" });
+
+        Assert.AreEqual(HttpStatusCode.BadRequest, correctResponse.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task ResetPassword_WithWeakNewPassword_Returns400()
+    {
+        // DataAnnotations short-circuits before AuthService — same precedent as
+        // Register_WithWeakPassword_Returns400 — so no real user/OTP is needed.
+        var response = await _client.PostAsJsonAsync("/api/auth/reset-password", new { email = UniqueEmail(), otp = "123456", newPassword = "short" });
+
+        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task ResetPassword_ThenRefreshWithOldToken_Returns401()
+    {
+        var email = UniqueEmail();
+        await RegisterAsync(email, client: _otpClient);
+        var oldTokens = await LoginAsync(email, client: _otpClient);
+        _sequentialOtpGenerator.Enqueue("777777");
+        await _otpClient.PostAsJsonAsync("/api/auth/forgot-password", new { email });
+
+        var resetResponse = await _otpClient.PostAsJsonAsync("/api/auth/reset-password", new { email, otp = "777777", newPassword = "NewPassw0rd1" });
+        Assert.AreEqual(HttpStatusCode.OK, resetResponse.StatusCode);
+
+        var refreshResponse = await _otpClient.PostAsJsonAsync("/api/auth/refresh", new { refreshToken = oldTokens.RefreshToken });
+
+        Assert.AreEqual(HttpStatusCode.Unauthorized, refreshResponse.StatusCode);
+    }
+
     // ---------- Helpers ----------
 
     private static string UniqueEmail([System.Runtime.CompilerServices.CallerMemberName] string? testName = null) =>
         $"{testName}_{Guid.NewGuid():N}@example.com";
 
-    private static async Task RegisterAsync(string email, string password = "Passw0rd", string name = "Test User")
+    private static async Task RegisterAsync(string email, string password = "Passw0rd", string name = "Test User", HttpClient? client = null)
     {
-        var response = await _client.PostAsJsonAsync("/api/auth/register", new { name, email, password });
+        var response = await (client ?? _client).PostAsJsonAsync("/api/auth/register", new { name, email, password });
         response.EnsureSuccessStatusCode();
     }
 
-    private static async Task<AuthTokensDto> LoginAsync(string email, string password = "Passw0rd")
+    private static async Task<AuthTokensDto> LoginAsync(string email, string password = "Passw0rd", HttpClient? client = null)
     {
-        var response = await _client.PostAsJsonAsync("/api/auth/login", new { email, password });
+        var response = await (client ?? _client).PostAsJsonAsync("/api/auth/login", new { email, password });
         response.EnsureSuccessStatusCode();
         var tokens = await response.Content.ReadFromJsonAsync<AuthTokensDto>(JsonOptions);
         Assert.IsNotNull(tokens);
@@ -348,5 +535,28 @@ public sealed class AuthControllerTests
             signingCredentials: credentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    /// <summary>
+    /// Test double substituted for the real OtpGenerator in _otpFactory (see ClassInitialize) —
+    /// the raw OTP is only ever logged, never returned via HTTP (FRS-AUTH-005), so a test that
+    /// needs to complete a full reset must know the code in advance. Enqueue() lets each test
+    /// pick its own code(s) before calling forgot-password. Hash only needs to be internally
+    /// self-consistent (both issuance and verification route through this same singleton
+    /// instance within _otpFactory) — it doesn't need to match the real algorithm, which
+    /// OtpGeneratorTests already covers directly.
+    /// </summary>
+    private sealed class SequentialOtpGenerator : IOtpGenerator
+    {
+        private readonly Queue<string> _queue = new();
+
+        public void Enqueue(string otp) => _queue.Enqueue(otp);
+
+        public string GenerateRawOtp() =>
+            _queue.Count > 0
+                ? _queue.Dequeue()
+                : throw new InvalidOperationException("SequentialOtpGenerator queue exhausted — Enqueue enough codes for this test.");
+
+        public string Hash(string rawOtp) => $"otp-hash:{rawOtp}";
     }
 }

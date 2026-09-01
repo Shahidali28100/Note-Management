@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using System.Text;
+using Microsoft.Extensions.Logging;
 using NoteManagement.Application.DTOs.Auth;
 using NoteManagement.Application.Exceptions;
 using NoteManagement.Application.Interfaces;
@@ -9,6 +12,8 @@ namespace NoteManagement.Application.Services;
 public sealed class AuthService : IAuthService
 {
     private static readonly TimeSpan RefreshTokenLifetime = TimeSpan.FromDays(7);
+    private static readonly TimeSpan OtpLifetime = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan OtpReissueCooldown = TimeSpan.FromSeconds(60);
 
     private readonly IUserRepository _userRepository;
     private readonly IRefreshTokenRepository _refreshTokenRepository;
@@ -16,6 +21,9 @@ public sealed class AuthService : IAuthService
     private readonly IPasswordHasher _passwordHasher;
     private readonly IJwtTokenGenerator _jwtTokenGenerator;
     private readonly IRefreshTokenSecretService _refreshTokenSecretService;
+    private readonly IPasswordResetOtpRepository _passwordResetOtpRepository;
+    private readonly IOtpGenerator _otpGenerator;
+    private readonly ILogger<AuthService> _logger;
 
     public AuthService(
         IUserRepository userRepository,
@@ -23,7 +31,10 @@ public sealed class AuthService : IAuthService
         IUnitOfWork unitOfWork,
         IPasswordHasher passwordHasher,
         IJwtTokenGenerator jwtTokenGenerator,
-        IRefreshTokenSecretService refreshTokenSecretService)
+        IRefreshTokenSecretService refreshTokenSecretService,
+        IPasswordResetOtpRepository passwordResetOtpRepository,
+        IOtpGenerator otpGenerator,
+        ILogger<AuthService> logger)
     {
         _userRepository = userRepository;
         _refreshTokenRepository = refreshTokenRepository;
@@ -31,6 +42,9 @@ public sealed class AuthService : IAuthService
         _passwordHasher = passwordHasher;
         _jwtTokenGenerator = jwtTokenGenerator;
         _refreshTokenSecretService = refreshTokenSecretService;
+        _passwordResetOtpRepository = passwordResetOtpRepository;
+        _otpGenerator = otpGenerator;
+        _logger = logger;
     }
 
     /// <summary>FRS-AUTH-001. Relies on the Users.Email unique index (translated to DuplicateEmailException by UnitOfWork/here) rather than a pre-check, to avoid a check-then-insert race.</summary>
@@ -141,6 +155,85 @@ public sealed class AuthService : IAuthService
         }
 
         return new UserDto(user.Id, user.Name, user.Email);
+    }
+
+    /// <summary>
+    /// FRS-AUTH-005. The response is identical regardless of whether the email exists or the
+    /// request lands inside the cooldown window — every early return below still ends in the same
+    /// generic 200 from the controller, so nothing here signals account existence.
+    /// </summary>
+    public async Task ForgotPasswordAsync(ForgotPasswordRequestDto request, CancellationToken cancellationToken)
+    {
+        var user = await _userRepository.GetByEmailAsync(request.Email, cancellationToken);
+        if (user is null)
+        {
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        var latest = await _passwordResetOtpRepository.GetLatestForUserAsync(user.Id, cancellationToken);
+        if (latest is not null && latest.CreatedAt > now - OtpReissueCooldown)
+        {
+            return; // Within cooldown — do not reissue; the existing OTP keeps its original expiry.
+        }
+
+        var rawOtp = _otpGenerator.GenerateRawOtp();
+        var otp = PasswordResetOtp.Issue(user.Id, _otpGenerator.Hash(rawOtp), now.Add(OtpLifetime), now);
+
+        await _unitOfWork.RunInTransactionAsync(async ct =>
+        {
+            // Only the newest OTP is ever valid — supersede whatever was outstanding before adding this one.
+            await _passwordResetOtpRepository.InvalidateAllActiveForUserAsync(user.Id, ct);
+            _passwordResetOtpRepository.Add(otp);
+            await _unitOfWork.SaveChangesAsync(ct);
+        }, cancellationToken);
+
+        // AGENTS.md §11 / SDS §62 explicitly allow logging the OTP — no real email provider exists.
+        _logger.LogInformation("Password reset OTP for user {UserId}: {Otp}", user.Id, rawOtp);
+    }
+
+    /// <summary>
+    /// FRS-AUTH-006. Every rejection path throws the same InvalidPasswordResetException — unknown
+    /// email, no active OTP, and a hash mismatch are all indistinguishable to the caller.
+    /// </summary>
+    public async Task ResetPasswordAsync(ResetPasswordRequestDto request, CancellationToken cancellationToken)
+    {
+        var user = await _userRepository.GetByEmailAsync(request.Email, cancellationToken);
+        var activeOtp = user is null
+            ? null
+            : await _passwordResetOtpRepository.GetActiveForUserAsync(user.Id, cancellationToken);
+
+        if (user is null || activeOtp is null)
+        {
+            throw new InvalidPasswordResetException();
+        }
+
+        // Constant-time comparison — a plain string/== check short-circuits on the first
+        // differing byte, leaking timing information about how many leading hex characters of
+        // the guess were correct. Both hashes are always the same fixed length (SHA-256 hex is
+        // 64 chars), so length itself carries no signal either.
+        var submittedHash = _otpGenerator.Hash(request.Otp);
+        var hashesMatch = CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(submittedHash),
+            Encoding.UTF8.GetBytes(activeOtp.OtpHash));
+
+        if (!hashesMatch)
+        {
+            activeOtp.RegisterFailedAttempt();
+            await _unitOfWork.RunInTransactionAsync(ct => _unitOfWork.SaveChangesAsync(ct), cancellationToken);
+            throw new InvalidPasswordResetException();
+        }
+
+        var newPasswordHash = _passwordHasher.Hash(request.NewPassword);
+
+        await _unitOfWork.RunInTransactionAsync(async ct =>
+        {
+            user.ChangePassword(newPasswordHash);
+            // Marks activeOtp (and any stray other outstanding OTP) used, in one atomic statement.
+            await _passwordResetOtpRepository.InvalidateAllActiveForUserAsync(user.Id, ct);
+            await _refreshTokenRepository.RevokeAllActiveForUserAsync(user.Id, ct);
+            await _unitOfWork.SaveChangesAsync(ct);
+        }, cancellationToken);
     }
 
     private async Task<AuthTokensDto> IssueTokensAsync(Guid userId, CancellationToken cancellationToken)

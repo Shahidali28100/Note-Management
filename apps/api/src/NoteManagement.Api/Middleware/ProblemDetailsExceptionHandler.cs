@@ -20,6 +20,7 @@ public sealed class ProblemDetailsExceptionHandler : IExceptionHandler
             DuplicateEmailException => (StatusCodes.Status409Conflict, "Email already registered"),
             InvalidCredentialsException => (StatusCodes.Status401Unauthorized, "Invalid credentials"),
             InvalidRefreshTokenException => (StatusCodes.Status401Unauthorized, "Invalid refresh token"),
+            InvalidPasswordResetException => (StatusCodes.Status400BadRequest, "Invalid password reset request"),
             _ => (0, string.Empty),
         };
 

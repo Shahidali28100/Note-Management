@@ -13,6 +13,9 @@ export {
   authTokensResponseSchema,
   refreshRequestSchema,
   logoutRequestSchema,
+  forgotPasswordRequestSchema,
+  resetPasswordRequestSchema,
+  messageResponseSchema,
 } from './schemas/auth';
 export * from './types/auth';
 

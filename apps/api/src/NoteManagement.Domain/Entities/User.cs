@@ -30,4 +30,11 @@ public sealed class User
             UpdatedAt = now,
         };
     }
+
+    /// <summary>AB-1003 / FRS-AUTH-006: sets a new password hash after a successful OTP-based reset.</summary>
+    public void ChangePassword(string newPasswordHash)
+    {
+        PasswordHash = newPasswordHash;
+        UpdatedAt = DateTime.UtcNow;
+    }
 }

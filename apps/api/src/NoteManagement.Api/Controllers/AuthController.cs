@@ -84,4 +84,26 @@ public sealed class AuthController : ControllerBase
         var user = await _authService.GetCurrentUserAsync(userId, cancellationToken);
         return Ok(user);
     }
+
+    /// <summary>FRS-AUTH-005. Always 200 — see AuthService.ForgotPasswordAsync's remarks on why.</summary>
+    [HttpPost("forgot-password")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(MessageResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<MessageResponseDto>> ForgotPassword(ForgotPasswordRequestDto request, CancellationToken cancellationToken)
+    {
+        await _authService.ForgotPasswordAsync(request, cancellationToken);
+        return Ok(new MessageResponseDto("If that email is registered, a password reset code has been sent."));
+    }
+
+    /// <summary>FRS-AUTH-006.</summary>
+    [HttpPost("reset-password")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(MessageResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<MessageResponseDto>> ResetPassword(ResetPasswordRequestDto request, CancellationToken cancellationToken)
+    {
+        await _authService.ResetPasswordAsync(request, cancellationToken);
+        return Ok(new MessageResponseDto("Password has been reset successfully."));
+    }
 }

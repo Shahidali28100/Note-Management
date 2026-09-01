@@ -13,4 +13,8 @@ public interface IAuthService
     Task LogoutAsync(LogoutRequestDto request, CancellationToken cancellationToken);
 
     Task<UserDto> GetCurrentUserAsync(Guid userId, CancellationToken cancellationToken);
+
+    Task ForgotPasswordAsync(ForgotPasswordRequestDto request, CancellationToken cancellationToken);
+
+    Task ResetPasswordAsync(ResetPasswordRequestDto request, CancellationToken cancellationToken);
 }

@@ -11,4 +11,7 @@ export type {
   AuthTokensResponse,
   RefreshRequest,
   LogoutRequest,
+  ForgotPasswordRequest,
+  ResetPasswordRequest,
+  MessageResponse,
 } from '../schemas/auth';

@@ -20,11 +20,13 @@ export {
 export * from './types/auth';
 
 // AB-1004 — Note DTOs + Zod schemas (SDS §55/§81). Consumed starting AB-1011/AB-1012 (frontend notes UI).
+// AB-1005 adds noteListQuerySchema (client-driven pagination/sorting query params).
 export {
   createNoteRequestSchema,
   updateNoteRequestSchema,
   noteResponseSchema,
   noteListResponseSchema,
+  noteListQuerySchema,
 } from './schemas/notes';
 export * from './types/notes';
 

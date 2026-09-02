@@ -10,6 +10,9 @@ public sealed class NoteService : INoteService
 {
     private const int DefaultPage = 1;
     private const int DefaultPageSize = 20; // AB-1004 fixed default view — AB-1005 adds real pagination.
+    private const int MaxPageSize = 100; // AB-1005: pageSize > 100 clamps down; pageSize < 1 is rejected upstream by NoteListQueryDto's [Range].
+    private const string DefaultSortBy = "updatedAt";
+    private const string DefaultSortDirection = "desc";
 
     private readonly INoteRepository _noteRepository;
     private readonly IUnitOfWork _unitOfWork;
@@ -42,13 +45,24 @@ public sealed class NoteService : INoteService
         return Map(note);
     }
 
-    /// <summary>FRS-NOTE-002/006/007 (fixed default view only — see class remarks and proposal.md).</summary>
-    public async Task<NoteListResponseDto> ListAsync(Guid userId, CancellationToken cancellationToken)
+    /// <summary>
+    /// FRS-NOTE-002/006/007. Defaults + the pageSize>100 clamp are resolved here — NoteRepository
+    /// receives only fully-valid values. page/pageSize &lt; 1, malformed values, or sortBy/
+    /// sortDirection outside the allowlist never reach this method (rejected upstream by
+    /// NoteListQueryDto's DataAnnotations, see class remarks). When query is all-null, behavior
+    /// is identical to AB-1004's fixed default view.
+    /// </summary>
+    public async Task<NoteListResponseDto> ListAsync(Guid userId, NoteListQueryDto query, CancellationToken cancellationToken)
     {
-        var (items, totalCount) = await _noteRepository.GetPageForUserAsync(userId, DefaultPage, DefaultPageSize, cancellationToken);
-        var totalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)DefaultPageSize);
+        var page = query.Page ?? DefaultPage;
+        var pageSize = Math.Min(query.PageSize ?? DefaultPageSize, MaxPageSize);
+        var sortBy = query.SortBy ?? DefaultSortBy;
+        var sortDirection = query.SortDirection ?? DefaultSortDirection;
 
-        return new NoteListResponseDto(items.Select(Map).ToList(), DefaultPage, DefaultPageSize, totalCount, totalPages);
+        var (items, totalCount) = await _noteRepository.GetPageForUserAsync(userId, page, pageSize, sortBy, sortDirection, cancellationToken);
+        var totalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize);
+
+        return new NoteListResponseDto(items.Select(Map).ToList(), page, pageSize, totalCount, totalPages);
     }
 
     /// <summary>FRS-NOTE-003. Does not create a NoteVersions snapshot — deferred to AB-1009 (proposal.md).</summary>

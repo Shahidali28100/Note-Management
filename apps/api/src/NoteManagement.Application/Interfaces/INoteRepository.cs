@@ -17,6 +17,14 @@ public interface INoteRepository
     /// <summary>Same ownership scoping as GetByIdAsync, but bypasses the soft-delete filter — the only lookup that can see a deleted note. Backs restore, which must distinguish "not found" from "found but not deleted."</summary>
     Task<Note?> GetByIdIncludingDeletedAsync(Guid id, Guid userId, CancellationToken cancellationToken);
 
-    /// <summary>Active notes owned by userId, sorted by UpdatedAt descending. AB-1004 always calls this with page=1/pageSize=20 (the fixed default view); the page/pageSize parameters exist now so AB-1005 can wire real query-string values through without changing this signature.</summary>
-    Task<(IReadOnlyList<Note> Items, int TotalCount)> GetPageForUserAsync(Guid userId, int page, int pageSize, CancellationToken cancellationToken);
+    /// <summary>
+    /// Active notes owned by userId, paged and sorted per the caller's resolved (already
+    /// defaulted/clamped) parameters. AB-1004 shipped this always called with page=1/pageSize=20/
+    /// UpdatedAt desc (the fixed default view); AB-1005 wires real query-string-driven values
+    /// through. sortBy must be one of "createdAt"/"updatedAt"/"title"; sortDirection must be one
+    /// of "asc"/"desc" — both are allowlisted upstream by NoteListQueryDto's [AllowedValues], and
+    /// the implementation must still map them via an explicit switch, never a dynamic/reflection-
+    /// based column lookup (AGENTS.md §6, SDS §41/§59).
+    /// </summary>
+    Task<(IReadOnlyList<Note> Items, int TotalCount)> GetPageForUserAsync(Guid userId, int page, int pageSize, string sortBy, string sortDirection, CancellationToken cancellationToken);
 }

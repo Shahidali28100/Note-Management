@@ -8,7 +8,7 @@ public interface INoteService
 
     Task<NoteResponseDto> GetByIdAsync(Guid userId, Guid noteId, CancellationToken cancellationToken);
 
-    Task<NoteListResponseDto> ListAsync(Guid userId, CancellationToken cancellationToken);
+    Task<NoteListResponseDto> ListAsync(Guid userId, NoteListQueryDto query, CancellationToken cancellationToken);
 
     Task<NoteResponseDto> UpdateAsync(Guid userId, Guid noteId, UpdateNoteRequestDto request, CancellationToken cancellationToken);
 

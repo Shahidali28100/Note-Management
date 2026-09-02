@@ -29,13 +29,14 @@ public sealed class NotesController : ControllerBase
         return StatusCode(StatusCodes.Status201Created, note);
     }
 
-    /// <summary>FRS-NOTE-002/006/007 — fixed default view only (see NoteService.ListAsync remarks).</summary>
+    /// <summary>FRS-NOTE-002/006/007.</summary>
     [HttpGet]
     [ProducesResponseType(typeof(NoteListResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<ActionResult<NoteListResponseDto>> List(CancellationToken cancellationToken)
+    public async Task<ActionResult<NoteListResponseDto>> List([FromQuery] NoteListQueryDto query, CancellationToken cancellationToken)
     {
-        var result = await _noteService.ListAsync(User.GetUserId(), cancellationToken);
+        var result = await _noteService.ListAsync(User.GetUserId(), query, cancellationToken);
         return Ok(result);
     }
 

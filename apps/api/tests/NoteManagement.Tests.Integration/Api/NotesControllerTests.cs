@@ -221,6 +221,125 @@ public sealed class NotesControllerTests
         Assert.AreEqual(0, list.TotalCount);
     }
 
+    [TestMethod]
+    public async Task List_WithPageAndPageSize_ReturnsRequestedPage()
+    {
+        var token = await CreateAuthenticatedUserAsync();
+        for (var i = 0; i < 7; i++)
+        {
+            await CreateNoteAsync(token, title: $"Note {i}");
+        }
+
+        using var request = AuthedRequest(HttpMethod.Get, "/api/notes?page=2&pageSize=3", token);
+        var response = await _client.SendAsync(request);
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        var list = await response.Content.ReadFromJsonAsync<NoteListResponseDto>(JsonOptions);
+        Assert.IsNotNull(list);
+        Assert.AreEqual(3, list.Items.Count);
+        Assert.AreEqual(2, list.Page);
+        Assert.AreEqual(3, list.PageSize);
+        Assert.AreEqual(7, list.TotalCount);
+        Assert.AreEqual(3, list.TotalPages);
+    }
+
+    [TestMethod]
+    public async Task List_WithSortByTitleAscending_ReturnsNotesOrderedByTitle()
+    {
+        var token = await CreateAuthenticatedUserAsync();
+        await CreateNoteAsync(token, title: "Bravo");
+        await CreateNoteAsync(token, title: "Alpha");
+        await CreateNoteAsync(token, title: "Charlie");
+
+        using var request = AuthedRequest(HttpMethod.Get, "/api/notes?sortBy=title&sortDirection=asc", token);
+        var response = await _client.SendAsync(request);
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        var list = await response.Content.ReadFromJsonAsync<NoteListResponseDto>(JsonOptions);
+        Assert.IsNotNull(list);
+        CollectionAssert.AreEqual(new[] { "Alpha", "Bravo", "Charlie" }, list.Items.Select(i => i.Title).ToArray());
+    }
+
+    [TestMethod]
+    public async Task List_WithPageBeyondLastPage_ReturnsEmptyItemsNotError()
+    {
+        var token = await CreateAuthenticatedUserAsync();
+        await CreateNoteAsync(token);
+
+        using var request = AuthedRequest(HttpMethod.Get, "/api/notes?page=999", token);
+        var response = await _client.SendAsync(request);
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        var list = await response.Content.ReadFromJsonAsync<NoteListResponseDto>(JsonOptions);
+        Assert.IsNotNull(list);
+        Assert.AreEqual(0, list.Items.Count);
+        Assert.AreEqual(1, list.TotalCount);
+        Assert.AreEqual(1, list.TotalPages);
+    }
+
+    [TestMethod]
+    public async Task List_WithInvalidPage_Returns400()
+    {
+        var token = await CreateAuthenticatedUserAsync();
+
+        foreach (var page in new[] { "0", "-1", "abc" })
+        {
+            using var request = AuthedRequest(HttpMethod.Get, $"/api/notes?page={page}", token);
+            var response = await _client.SendAsync(request);
+            Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode, $"page={page} should be rejected");
+        }
+    }
+
+    [TestMethod]
+    public async Task List_WithInvalidPageSize_Returns400()
+    {
+        var token = await CreateAuthenticatedUserAsync();
+
+        foreach (var pageSize in new[] { "0", "-1", "abc" })
+        {
+            using var request = AuthedRequest(HttpMethod.Get, $"/api/notes?pageSize={pageSize}", token);
+            var response = await _client.SendAsync(request);
+            Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode, $"pageSize={pageSize} should be rejected");
+        }
+    }
+
+    [TestMethod]
+    public async Task List_WithPageSizeOver100_ClampsTo100()
+    {
+        var token = await CreateAuthenticatedUserAsync();
+        await CreateNoteAsync(token);
+
+        using var request = AuthedRequest(HttpMethod.Get, "/api/notes?pageSize=500", token);
+        var response = await _client.SendAsync(request);
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        var list = await response.Content.ReadFromJsonAsync<NoteListResponseDto>(JsonOptions);
+        Assert.IsNotNull(list);
+        Assert.AreEqual(100, list.PageSize);
+    }
+
+    [TestMethod]
+    public async Task List_WithUnsupportedSortBy_Returns400()
+    {
+        var token = await CreateAuthenticatedUserAsync();
+
+        using var request = AuthedRequest(HttpMethod.Get, "/api/notes?sortBy=deletedAt", token);
+        var response = await _client.SendAsync(request);
+
+        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task List_WithUnsupportedSortDirection_Returns400()
+    {
+        var token = await CreateAuthenticatedUserAsync();
+
+        using var request = AuthedRequest(HttpMethod.Get, "/api/notes?sortDirection=sideways", token);
+        var response = await _client.SendAsync(request);
+
+        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     // ---------- Update ----------
 
     [TestMethod]

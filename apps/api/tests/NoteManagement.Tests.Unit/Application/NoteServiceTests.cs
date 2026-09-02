@@ -72,7 +72,9 @@ public sealed class NoteServiceTests
         var noteRepository = new FakeNoteRepository(older, newer, deletedForCaller, otherUsersNote);
         var sut = CreateSut(noteRepository: noteRepository);
 
-        var result = await sut.ListAsync(userId, CancellationToken.None);
+        // All-null query — AB-1005's default-resolution must reproduce AB-1004's fixed default
+        // view (page 1, pageSize 20, updatedAt desc) exactly.
+        var result = await sut.ListAsync(userId, new NoteListQueryDto(), CancellationToken.None);
 
         Assert.AreEqual(2, result.Items.Count);
         Assert.AreEqual("Newer", result.Items[0].Title);
@@ -85,13 +87,55 @@ public sealed class NoteServiceTests
     {
         var sut = CreateSut();
 
-        var result = await sut.ListAsync(Guid.NewGuid(), CancellationToken.None);
+        var result = await sut.ListAsync(Guid.NewGuid(), new NoteListQueryDto(), CancellationToken.None);
 
         Assert.AreEqual(0, result.Items.Count);
         Assert.AreEqual(0, result.TotalCount);
         Assert.AreEqual(0, result.TotalPages);
         Assert.AreEqual(1, result.Page);
         Assert.AreEqual(20, result.PageSize);
+    }
+
+    [TestMethod]
+    public async Task ListAsync_WithExplicitPageAndPageSize_UsesRequestedValues()
+    {
+        var userId = Guid.NewGuid();
+        var notes = Enumerable.Range(1, 7).Select(i => Note.Create(userId, $"Note {i}", "Content")).ToArray();
+        var sut = CreateSut(noteRepository: new FakeNoteRepository(notes));
+
+        var result = await sut.ListAsync(userId, new NoteListQueryDto(Page: 2, PageSize: 3), CancellationToken.None);
+
+        Assert.AreEqual(3, result.Items.Count);
+        Assert.AreEqual(2, result.Page);
+        Assert.AreEqual(3, result.PageSize);
+        Assert.AreEqual(7, result.TotalCount);
+        Assert.AreEqual(3, result.TotalPages);
+    }
+
+    /// <summary>The one clamp rule that's pure Application-layer policy, not expressible via DataAnnotations — must be unit-tested here (plan.md §3).</summary>
+    [TestMethod]
+    public async Task ListAsync_WithPageSizeOver100_ClampsTo100()
+    {
+        var userId = Guid.NewGuid();
+        var sut = CreateSut(noteRepository: new FakeNoteRepository(Note.Create(userId, "Title", "Content")));
+
+        var result = await sut.ListAsync(userId, new NoteListQueryDto(PageSize: 500), CancellationToken.None);
+
+        Assert.AreEqual(100, result.PageSize);
+    }
+
+    [TestMethod]
+    public async Task ListAsync_WithSortByTitleAscending_OrdersByTitleAscending()
+    {
+        var userId = Guid.NewGuid();
+        var bravo = Note.Create(userId, "Bravo", "Content");
+        var alpha = Note.Create(userId, "Alpha", "Content");
+        var charlie = Note.Create(userId, "Charlie", "Content");
+        var sut = CreateSut(noteRepository: new FakeNoteRepository(bravo, alpha, charlie));
+
+        var result = await sut.ListAsync(userId, new NoteListQueryDto(SortBy: "title", SortDirection: "asc"), CancellationToken.None);
+
+        CollectionAssert.AreEqual(new[] { "Alpha", "Bravo", "Charlie" }, result.Items.Select(i => i.Title).ToArray());
     }
 
     [TestMethod]
@@ -223,13 +267,23 @@ public sealed class NoteServiceTests
         public Task<Note?> GetByIdIncludingDeletedAsync(Guid id, Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult(_all.FirstOrDefault(n => n.Id == id && n.UserId == userId));
 
-        public Task<(IReadOnlyList<Note> Items, int TotalCount)> GetPageForUserAsync(Guid userId, int page, int pageSize, CancellationToken cancellationToken)
+        public Task<(IReadOnlyList<Note> Items, int TotalCount)> GetPageForUserAsync(Guid userId, int page, int pageSize, string sortBy, string sortDirection, CancellationToken cancellationToken)
         {
-            var active = _all
-                .Where(n => n.UserId == userId && !n.IsDeleted)
-                .OrderByDescending(n => n.UpdatedAt)
-                .ToList();
-            var totalCount = active.Count;
+            var candidates = _all.Where(n => n.UserId == userId && !n.IsDeleted);
+
+            // Mirrors NoteRepository's explicit allowlist switch so sort-order assertions here
+            // are meaningful, not just a pass-through count check.
+            IOrderedEnumerable<Note> active = (sortBy, sortDirection) switch
+            {
+                ("createdAt", "asc") => candidates.OrderBy(n => n.CreatedAt),
+                ("createdAt", "desc") => candidates.OrderByDescending(n => n.CreatedAt),
+                ("title", "asc") => candidates.OrderBy(n => n.Title, StringComparer.Ordinal),
+                ("title", "desc") => candidates.OrderByDescending(n => n.Title, StringComparer.Ordinal),
+                ("updatedAt", "asc") => candidates.OrderBy(n => n.UpdatedAt),
+                _ => candidates.OrderByDescending(n => n.UpdatedAt),
+            };
+
+            var totalCount = candidates.Count();
             var items = active.Skip((page - 1) * pageSize).Take(pageSize).ToList();
             return Task.FromResult<(IReadOnlyList<Note>, int)>((items, totalCount));
         }

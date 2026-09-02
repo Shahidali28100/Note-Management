@@ -35,3 +35,15 @@ export const noteListResponseSchema = z.object({
   totalPages: z.number().int(),
 });
 export type NoteListResponse = z.infer<typeof noteListResponseSchema>;
+
+// AB-1005 — mirrors NoteListQueryDto's shape validation (page/pageSize positive integers,
+// sortBy/sortDirection allowlisted). Defaulting and the pageSize>100 clamp are backend
+// (NoteService) behavior, not expressed here — this is UX convenience only, never authoritative
+// (packages/shared/CLAUDE.md).
+export const noteListQuerySchema = z.object({
+  page: z.number().int().min(1).optional(),
+  pageSize: z.number().int().min(1).optional(),
+  sortBy: z.enum(['createdAt', 'updatedAt', 'title']).optional(),
+  sortDirection: z.enum(['asc', 'desc']).optional(),
+});
+export type NoteListQuery = z.infer<typeof noteListQuerySchema>;

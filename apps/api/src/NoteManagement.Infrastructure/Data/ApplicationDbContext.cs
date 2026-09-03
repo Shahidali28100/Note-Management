@@ -23,6 +23,10 @@ public sealed class ApplicationDbContext : DbContext
 
     public DbSet<Note> Notes => Set<Note>();
 
+    public DbSet<Tag> Tags => Set<Tag>();
+
+    public DbSet<NoteTag> NoteTags => Set<NoteTag>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);

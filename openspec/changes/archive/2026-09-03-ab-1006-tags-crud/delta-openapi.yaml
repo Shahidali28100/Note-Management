@@ -1,0 +1,482 @@
+openapi: 3.0.3
+info:
+  title: Note Taking Application API — AB-1006 delta
+  version: "0.6.0"
+  description: >
+    AB-1006 introduces the Tags capability (create/list/update/delete a
+    user's own tags) and extends the existing notes endpoints (introduced in
+    AB-1004, extended in AB-1005) with tag assignment and tag filtering.
+    All note response shapes gain a `tags` array. `GET /api/notes` gains an
+    optional `tagId` filter. Multi-tag filtering is out of scope for this
+    delta.
+paths:
+  /api/tags:
+    post:
+      operationId: createTag
+      summary: Create a tag owned by the caller
+      description: >
+        Creates a tag for the authenticated user. name must be 1-50
+        characters after trimming; color must be a #RRGGBB hex string.
+        name uniqueness is enforced case-insensitively per user.
+      tags: [tags]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTagRequest'
+      responses:
+        "201":
+          description: Tag created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tag'
+        "400":
+          description: Missing/oversized name, or invalid color format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        "401":
+          description: Missing or invalid access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        "409":
+          description: A tag with the same name (case-insensitive) already exists for this user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+    get:
+      operationId: listTags
+      summary: List the caller's own tags
+      description: >
+        Returns all tags owned by the authenticated user as a plain array
+        (no pagination envelope). Each item includes noteCount: the number
+        of the caller's active (non-deleted) notes carrying that tag.
+      tags: [tags]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The caller's tags
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Tag'
+        "401":
+          description: Missing or invalid access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /api/tags/{id}:
+    put:
+      operationId: updateTag
+      summary: Update a tag owned by the caller
+      description: >
+        Renames/recolors a tag owned by the caller. Ownership does not
+        change. Same validation and case-insensitive uniqueness check as
+        create (excluding the tag being updated).
+      tags: [tags]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTagRequest'
+      responses:
+        "200":
+          description: Tag updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tag'
+        "400":
+          description: Missing/oversized name, or invalid color format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        "401":
+          description: Missing or invalid access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        "404":
+          description: Tag does not exist or is not owned by the caller
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        "409":
+          description: A different tag with the same name (case-insensitive) already exists for this user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+    delete:
+      operationId: deleteTag
+      summary: Delete a tag owned by the caller
+      description: >
+        Removes a tag owned by the caller and its NoteTags associations.
+        Associated notes are not deleted.
+      tags: [tags]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Tag deleted
+        "401":
+          description: Missing or invalid access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        "404":
+          description: Tag does not exist or is not owned by the caller
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /api/notes:
+    get:
+      operationId: listNotes
+      summary: List the caller's active notes with pagination, sorting, and tag filtering
+      description: >
+        Returns the authenticated caller's non-deleted notes using the
+        standard list envelope. Adds an optional tagId query parameter to
+        the page/pageSize/sortBy/sortDirection parameters introduced in
+        AB-1005. Each returned note includes its tags array.
+      tags: [notes]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 20
+            maximum: 100
+        - name: sortBy
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [createdAt, updatedAt, title]
+            default: updatedAt
+        - name: sortDirection
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+        - name: tagId
+          in: query
+          required: false
+          description: >
+            Restrict the listing to active notes carrying this tag. Must
+            reference a tag owned by the caller; otherwise the request is
+            rejected with 400. Omitting it returns all of the caller's
+            active notes (unchanged from AB-1005).
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The caller's active notes for the requested page/sort/filter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoteListResponse'
+        "400":
+          description: >
+            Invalid page/pageSize/sortBy/sortDirection (unchanged from
+            AB-1005), or tagId that does not exist or is not owned by the
+            caller
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        "401":
+          description: Missing or invalid access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+    post:
+      operationId: createNote
+      summary: Create a note owned by the caller, optionally assigning tags
+      description: >
+        Creates a note owned by the authenticated caller. Adds an optional
+        tagIds array to the title/content fields introduced in AB-1004.
+      tags: [notes]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateNoteRequest'
+      responses:
+        "201":
+          description: Note created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+        "400":
+          description: >
+            Missing/oversized title, missing content, or a tagIds entry
+            that does not exist or is not owned by the caller (the entire
+            request is rejected, no partial assignment)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        "401":
+          description: Missing or invalid access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /api/notes/{id}:
+    put:
+      operationId: updateNote
+      summary: Replace title/content and tag assignment of a note owned by the caller
+      description: >
+        Full replace of title/content and tag assignment on a note owned
+        by the caller. tagIds fully replaces the note's prior tag
+        assignment (matching title/content's existing full-replace
+        semantics).
+      tags: [notes]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateNoteRequest'
+      responses:
+        "200":
+          description: Note updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+        "400":
+          description: >
+            Missing/oversized title, missing content, or a tagIds entry
+            that does not exist or is not owned by the caller
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        "401":
+          description: Missing or invalid access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        "404":
+          description: Note does not exist, is soft-deleted, or is not owned by the caller
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+components:
+  schemas:
+    Tag:
+      type: object
+      required: [id, name, color, noteCount, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+        noteCount:
+          type: integer
+          description: Count of the owner's active (non-deleted) notes carrying this tag.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateTagRequest:
+      type: object
+      required: [name, color]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+        color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+
+    UpdateTagRequest:
+      type: object
+      required: [name, color]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+        color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+
+    TagRef:
+      type: object
+      required: [id, name, color]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+
+    Note:
+      type: object
+      required: [id, title, content, tags, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        content:
+          type: string
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/TagRef'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateNoteRequest:
+      type: object
+      required: [title, content]
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+        tagIds:
+          type: array
+          default: []
+          items:
+            type: string
+            format: uuid
+
+    UpdateNoteRequest:
+      type: object
+      required: [title, content]
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+        tagIds:
+          type: array
+          default: []
+          items:
+            type: string
+            format: uuid
+
+    NoteListResponse:
+      type: object
+      required: [items, page, pageSize, totalCount, totalPages]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Note'
+        page:
+          type: integer
+          example: 1
+        pageSize:
+          type: integer
+          example: 20
+        totalCount:
+          type: integer
+        totalPages:
+          type: integer
+
+    ProblemDetails:
+      type: object
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

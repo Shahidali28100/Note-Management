@@ -11,6 +11,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IHealthCheckService, HealthCheckService>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<INoteService, NoteService>();
+        services.AddScoped<ITagService, TagService>();
         return services;
     }
 }

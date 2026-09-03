@@ -12,10 +12,14 @@ namespace NoteManagement.Application.DTOs.Notes;
 /// NoteService.ListAsync. Uses OptionalAllowedValuesAttribute rather than the built-in
 /// AllowedValuesAttribute — the built-in one rejects null (verified directly, not the
 /// [Required]-defers-to-null convention the rest of this codebase follows), which would wrongly
-/// reject a request that simply omits sortBy/sortDirection.
+/// reject a request that simply omits sortBy/sortDirection. TagId (AB-1006, FRS-NOTE-008) needs
+/// no DataAnnotations — a malformed GUID query string is already rejected 400 by
+/// [ApiController]'s automatic model-binding-failure handling; ownership validation is
+/// NoteService's concern (see InvalidTagReferenceException).
 /// </summary>
 public sealed record NoteListQueryDto(
     [Range(1, int.MaxValue, ErrorMessage = "page must be a positive integer.")] int? Page = null,
     [Range(1, int.MaxValue, ErrorMessage = "pageSize must be a positive integer.")] int? PageSize = null,
     [OptionalAllowedValues("createdAt", "updatedAt", "title", ErrorMessage = "sortBy must be one of: createdAt, updatedAt, title.")] string? SortBy = null,
-    [OptionalAllowedValues("asc", "desc", ErrorMessage = "sortDirection must be one of: asc, desc.")] string? SortDirection = null);
+    [OptionalAllowedValues("asc", "desc", ErrorMessage = "sortDirection must be one of: asc, desc.")] string? SortDirection = null,
+    Guid? TagId = null);

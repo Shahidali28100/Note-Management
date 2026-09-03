@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using NoteManagement.Application.DTOs.Auth;
 using NoteManagement.Application.DTOs.Notes;
+using NoteManagement.Application.DTOs.Tags;
 using NoteManagement.Infrastructure.Data;
 
 namespace NoteManagement.Tests.Integration.Api;
@@ -59,6 +60,34 @@ public sealed class NotesControllerTests
         Assert.AreEqual("My First Note", note.Title);
         Assert.AreEqual("Hello world", note.Content);
         Assert.AreEqual(note.CreatedAt, note.UpdatedAt);
+        Assert.AreEqual(0, note.Tags.Count); // No tagIds submitted — the untagged path must not leak tags (AB-1006).
+    }
+
+    [TestMethod]
+    public async Task Create_WithTagIds_Returns201WithTags()
+    {
+        var token = await CreateAuthenticatedUserAsync();
+        var tag = await CreateTagAsync(token);
+
+        using var request = AuthedRequest(HttpMethod.Post, "/api/notes", token, new { title = "Tagged Note", content = "Hello", tagIds = new[] { tag.Id } });
+        var response = await _client.SendAsync(request);
+
+        Assert.AreEqual(HttpStatusCode.Created, response.StatusCode);
+        var note = await response.Content.ReadFromJsonAsync<NoteResponseDto>(JsonOptions);
+        Assert.IsNotNull(note);
+        Assert.AreEqual(1, note.Tags.Count);
+        Assert.AreEqual(tag.Id, note.Tags[0].Id);
+    }
+
+    [TestMethod]
+    public async Task Create_WithInvalidTagId_Returns400()
+    {
+        var token = await CreateAuthenticatedUserAsync();
+
+        using var request = AuthedRequest(HttpMethod.Post, "/api/notes", token, new { title = "Title", content = "Content", tagIds = new[] { Guid.NewGuid() } });
+        var response = await _client.SendAsync(request);
+
+        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [TestMethod]
@@ -124,6 +153,7 @@ public sealed class NotesControllerTests
         var fetched = await response.Content.ReadFromJsonAsync<NoteResponseDto>(JsonOptions);
         Assert.IsNotNull(fetched);
         Assert.AreEqual(note.Id, fetched.Id);
+        Assert.AreEqual(0, fetched.Tags.Count); // No tags assigned — the untagged path must not leak tags (AB-1006).
     }
 
     [TestMethod]
@@ -185,6 +215,7 @@ public sealed class NotesControllerTests
         Assert.AreEqual(20, list.PageSize);
         Assert.AreEqual(1, list.TotalCount);
         Assert.AreEqual(1, list.TotalPages);
+        Assert.AreEqual(0, list.Items[0].Tags.Count); // No tags assigned — the untagged path must not leak tags (AB-1006).
     }
 
     [TestMethod]
@@ -340,6 +371,52 @@ public sealed class NotesControllerTests
         Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    [TestMethod]
+    public async Task List_WithTagIdFilter_ReturnsFilteredNotes()
+    {
+        var token = await CreateAuthenticatedUserAsync();
+        var tag = await CreateTagAsync(token);
+        var tagged = await CreateNoteAsync(token, title: "Tagged", tagIds: new[] { tag.Id });
+        await CreateNoteAsync(token, title: "Untagged");
+
+        using var request = AuthedRequest(HttpMethod.Get, $"/api/notes?tagId={tag.Id}", token);
+        var response = await _client.SendAsync(request);
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        var list = await response.Content.ReadFromJsonAsync<NoteListResponseDto>(JsonOptions);
+        Assert.IsNotNull(list);
+        Assert.AreEqual(1, list.Items.Count);
+        Assert.AreEqual(tagged.Id, list.Items[0].Id);
+    }
+
+    [TestMethod]
+    public async Task List_WithTagIdFilterNoMatches_ReturnsEmptyItems()
+    {
+        var token = await CreateAuthenticatedUserAsync();
+        var tag = await CreateTagAsync(token);
+        await CreateNoteAsync(token);
+
+        using var request = AuthedRequest(HttpMethod.Get, $"/api/notes?tagId={tag.Id}", token);
+        var response = await _client.SendAsync(request);
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        var list = await response.Content.ReadFromJsonAsync<NoteListResponseDto>(JsonOptions);
+        Assert.IsNotNull(list);
+        Assert.AreEqual(0, list.Items.Count);
+        Assert.AreEqual(0, list.TotalCount);
+    }
+
+    [TestMethod]
+    public async Task List_WithInvalidTagId_Returns400()
+    {
+        var token = await CreateAuthenticatedUserAsync();
+
+        using var request = AuthedRequest(HttpMethod.Get, $"/api/notes?tagId={Guid.NewGuid()}", token);
+        var response = await _client.SendAsync(request);
+
+        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     // ---------- Update ----------
 
     [TestMethod]
@@ -358,6 +435,36 @@ public sealed class NotesControllerTests
         Assert.AreEqual("New Content", updated.Content);
         Assert.AreEqual(note.CreatedAt, updated.CreatedAt);
         Assert.IsTrue(updated.UpdatedAt >= note.UpdatedAt);
+        Assert.AreEqual(0, updated.Tags.Count); // No tagIds submitted — the untagged path must not leak tags (AB-1006).
+    }
+
+    [TestMethod]
+    public async Task Update_WithTagIds_Returns200WithUpdatedTags()
+    {
+        var token = await CreateAuthenticatedUserAsync();
+        var tag = await CreateTagAsync(token);
+        var note = await CreateNoteAsync(token);
+
+        using var request = AuthedRequest(HttpMethod.Put, $"/api/notes/{note.Id}", token, new { title = "Title", content = "Content", tagIds = new[] { tag.Id } });
+        var response = await _client.SendAsync(request);
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        var updated = await response.Content.ReadFromJsonAsync<NoteResponseDto>(JsonOptions);
+        Assert.IsNotNull(updated);
+        Assert.AreEqual(1, updated.Tags.Count);
+        Assert.AreEqual(tag.Id, updated.Tags[0].Id);
+    }
+
+    [TestMethod]
+    public async Task Update_WithInvalidTagId_Returns400()
+    {
+        var token = await CreateAuthenticatedUserAsync();
+        var note = await CreateNoteAsync(token);
+
+        using var request = AuthedRequest(HttpMethod.Put, $"/api/notes/{note.Id}", token, new { title = "Title", content = "Content", tagIds = new[] { Guid.NewGuid() } });
+        var response = await _client.SendAsync(request);
+
+        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [TestMethod]
@@ -511,6 +618,7 @@ public sealed class NotesControllerTests
         var restored = await response.Content.ReadFromJsonAsync<NoteResponseDto>(JsonOptions);
         Assert.IsNotNull(restored);
         Assert.AreEqual(note.Id, restored.Id);
+        Assert.AreEqual(0, restored.Tags.Count); // No tags assigned — the untagged path must not leak tags (AB-1006).
     }
 
     [TestMethod]
@@ -621,13 +729,23 @@ public sealed class NotesControllerTests
         return request;
     }
 
-    private static async Task<NoteResponseDto> CreateNoteAsync(string token, string title = "Title", string content = "Content")
+    private static async Task<NoteResponseDto> CreateNoteAsync(string token, string title = "Title", string content = "Content", IReadOnlyList<Guid>? tagIds = null)
     {
-        using var request = AuthedRequest(HttpMethod.Post, "/api/notes", token, new { title, content });
+        using var request = AuthedRequest(HttpMethod.Post, "/api/notes", token, new { title, content, tagIds });
         var response = await _client.SendAsync(request);
         response.EnsureSuccessStatusCode();
         var note = await response.Content.ReadFromJsonAsync<NoteResponseDto>(JsonOptions);
         Assert.IsNotNull(note);
         return note;
+    }
+
+    private static async Task<TagResponseDto> CreateTagAsync(string token, string name = "Work", string color = "#FF5733")
+    {
+        using var request = AuthedRequest(HttpMethod.Post, "/api/tags", token, new { name, color });
+        var response = await _client.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+        var tag = await response.Content.ReadFromJsonAsync<TagResponseDto>(JsonOptions);
+        Assert.IsNotNull(tag);
+        return tag;
     }
 }

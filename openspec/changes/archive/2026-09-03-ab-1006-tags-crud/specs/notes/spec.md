@@ -1,9 +1,4 @@
-# notes Specification
-
-## Purpose
-TBD - created by archiving change ab-1004-notes-crud. Update Purpose after archive.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Note Creation
 The system SHALL allow an authenticated user to create a note belonging to them by providing a title, content, and an optional list of tag ids.
@@ -46,26 +41,46 @@ A successful creation SHALL persist the note with the authenticated user as owne
 - **WHEN** a request to create a note carries no valid access token
 - **THEN** the system rejects the request with `401 Unauthorized` and does not create a note
 
-### Requirement: Single Note Retrieval
-The system SHALL allow an authenticated user to retrieve one of their own active (non-deleted) notes by id.
+### Requirement: Note Update
+The system SHALL allow an authenticated user to replace the title, content, and tag assignment of their own active (non-deleted) note.
 
-A note that does not exist, that has been soft-deleted, or that belongs to a different user SHALL be rejected identically — the response SHALL NOT reveal whether the id exists or who owns it.
+The same title/content validation used at creation SHALL apply. The request MAY include a `tagIds` array with the same rules as creation: missing means empty, every id must reference a tag owned by the caller, duplicates are de-duplicated, and any invalid id rejects the entire request with `400 Bad Request`. `tagIds` SHALL **fully replace** the note's existing tag assignment — a tag previously assigned but omitted from `tagIds` SHALL no longer be associated with the note after a successful update.
 
-#### Scenario: Owner retrieves their own note
-- **WHEN** an authenticated user requests a note by id that they own and that is not soft-deleted
-- **THEN** the system responds `200 OK` with that note's id, title, content, createdAt, and updatedAt
+A successful update SHALL set the last-modification timestamp to the current UTC time and SHALL leave the creation timestamp unchanged.
 
-#### Scenario: Non-existent note rejected
-- **WHEN** an authenticated user requests a note id that does not exist
+A note that does not exist, is soft-deleted, or belongs to a different user SHALL be rejected identically to single note retrieval (`404 Not Found`, no existence/ownership disclosure).
+
+#### Scenario: Owner successfully updates their note
+- **WHEN** an authenticated user submits a valid title and content along with `tagIds` for a note id they own and that is not soft-deleted
+- **THEN** the system updates the note's title, content, and tag assignment to exactly the referenced tags, sets updatedAt to the current UTC time, leaves createdAt unchanged, and responds `200 OK` with the updated note including its new `tags` array
+
+#### Scenario: Omitted tag no longer associated after update
+- **WHEN** an authenticated user updates a note that currently carries two tags, submitting `tagIds` containing only one of them
+- **THEN** the system associates the note with only the submitted tag, removing the omitted one
+
+#### Scenario: Empty tagIds clears all tag assignments
+- **WHEN** an authenticated user updates a note that currently carries one or more tags, submitting an empty `tagIds` array (or omitting `tagIds`)
+- **THEN** the system removes all of the note's tag assignments
+
+#### Scenario: Invalid update rejected
+- **WHEN** an authenticated user submits an update with a missing/oversized title or missing/empty content for a note they own
+- **THEN** the system rejects the request with `400 Bad Request` and does not modify the note
+
+#### Scenario: Non-existent or unowned tag id rejected
+- **WHEN** an authenticated user submits an update with `tagIds` containing an id that does not exist or belongs to a different user, for a note they own
+- **THEN** the system rejects the request with `400 Bad Request` and does not modify the note or its tag assignment
+
+#### Scenario: Update to non-existent note rejected
+- **WHEN** an authenticated user submits an update for a note id that does not exist
 - **THEN** the system rejects the request with `404 Not Found`
 
-#### Scenario: Another user's note rejected identically to not-found
-- **WHEN** an authenticated user requests a note id that exists but is owned by a different user
-- **THEN** the system rejects the request with `404 Not Found`, the same response used for a non-existent id
+#### Scenario: Update to another user's note rejected identically to not-found
+- **WHEN** an authenticated user submits an update for a note id owned by a different user
+- **THEN** the system rejects the request with `404 Not Found`, the same response used for a non-existent id, and does not modify the note
 
-#### Scenario: Soft-deleted note rejected identically to not-found
-- **WHEN** an authenticated user requests a note id that they own but that has been soft-deleted
-- **THEN** the system rejects the request with `404 Not Found`
+#### Scenario: Update to a soft-deleted note rejected
+- **WHEN** an authenticated user submits an update for a note id they own that has been soft-deleted
+- **THEN** the system rejects the request with `404 Not Found` and does not modify the note
 
 ### Requirement: Note Listing
 The system SHALL allow an authenticated user to list their own active (non-deleted) notes.
@@ -145,102 +160,3 @@ Notes belonging to other users, and the authenticated user's own soft-deleted no
 #### Scenario: Non-existent or unowned tagId rejected
 - **WHEN** an authenticated user requests their note list with `tagId` set to an id that does not exist or belongs to a different user
 - **THEN** the system rejects the request with `400 Bad Request`
-
-### Requirement: Note Update
-The system SHALL allow an authenticated user to replace the title, content, and tag assignment of their own active (non-deleted) note.
-
-The same title/content validation used at creation SHALL apply. The request MAY include a `tagIds` array with the same rules as creation: missing means empty, every id must reference a tag owned by the caller, duplicates are de-duplicated, and any invalid id rejects the entire request with `400 Bad Request`. `tagIds` SHALL **fully replace** the note's existing tag assignment — a tag previously assigned but omitted from `tagIds` SHALL no longer be associated with the note after a successful update.
-
-A successful update SHALL set the last-modification timestamp to the current UTC time and SHALL leave the creation timestamp unchanged.
-
-A note that does not exist, is soft-deleted, or belongs to a different user SHALL be rejected identically to single note retrieval (`404 Not Found`, no existence/ownership disclosure).
-
-#### Scenario: Owner successfully updates their note
-- **WHEN** an authenticated user submits a valid title and content along with `tagIds` for a note id they own and that is not soft-deleted
-- **THEN** the system updates the note's title, content, and tag assignment to exactly the referenced tags, sets updatedAt to the current UTC time, leaves createdAt unchanged, and responds `200 OK` with the updated note including its new `tags` array
-
-#### Scenario: Omitted tag no longer associated after update
-- **WHEN** an authenticated user updates a note that currently carries two tags, submitting `tagIds` containing only one of them
-- **THEN** the system associates the note with only the submitted tag, removing the omitted one
-
-#### Scenario: Empty tagIds clears all tag assignments
-- **WHEN** an authenticated user updates a note that currently carries one or more tags, submitting an empty `tagIds` array (or omitting `tagIds`)
-- **THEN** the system removes all of the note's tag assignments
-
-#### Scenario: Invalid update rejected
-- **WHEN** an authenticated user submits an update with a missing/oversized title or missing/empty content for a note they own
-- **THEN** the system rejects the request with `400 Bad Request` and does not modify the note
-
-#### Scenario: Non-existent or unowned tag id rejected
-- **WHEN** an authenticated user submits an update with `tagIds` containing an id that does not exist or belongs to a different user, for a note they own
-- **THEN** the system rejects the request with `400 Bad Request` and does not modify the note or its tag assignment
-
-#### Scenario: Update to non-existent note rejected
-- **WHEN** an authenticated user submits an update for a note id that does not exist
-- **THEN** the system rejects the request with `404 Not Found`
-
-#### Scenario: Update to another user's note rejected identically to not-found
-- **WHEN** an authenticated user submits an update for a note id owned by a different user
-- **THEN** the system rejects the request with `404 Not Found`, the same response used for a non-existent id, and does not modify the note
-
-#### Scenario: Update to a soft-deleted note rejected
-- **WHEN** an authenticated user submits an update for a note id they own that has been soft-deleted
-- **THEN** the system rejects the request with `404 Not Found` and does not modify the note
-
-### Requirement: Note Soft Deletion
-The system SHALL allow an authenticated user to soft-delete their own active (non-deleted) note.
-
-A successful deletion SHALL set the note's `deletedAt` timestamp to the current UTC time. The note SHALL NOT be physically removed from the database. Once soft-deleted, the note SHALL NOT appear in single-note retrieval or listing responses.
-
-A note that does not exist, is already soft-deleted, or belongs to a different user SHALL be rejected identically (`404 Not Found`).
-
-#### Scenario: Owner soft-deletes their note
-- **WHEN** an authenticated user deletes a note id they own that is not already soft-deleted
-- **THEN** the system sets that note's deletedAt to the current UTC time, does not physically remove the row, and responds `204 No Content`
-
-#### Scenario: Soft-deleted note excluded from subsequent retrieval
-- **WHEN** an authenticated user retrieves a note id immediately after soft-deleting it
-- **THEN** the system responds `404 Not Found` for that id
-
-#### Scenario: Delete of non-existent note rejected
-- **WHEN** an authenticated user attempts to delete a note id that does not exist
-- **THEN** the system rejects the request with `404 Not Found`
-
-#### Scenario: Delete of another user's note rejected identically to not-found
-- **WHEN** an authenticated user attempts to delete a note id owned by a different user
-- **THEN** the system rejects the request with `404 Not Found`, the same response used for a non-existent id, and the other user's note remains active
-
-#### Scenario: Delete of an already soft-deleted note rejected
-- **WHEN** an authenticated user attempts to delete a note id they own that is already soft-deleted
-- **THEN** the system rejects the request with `404 Not Found`
-
-### Requirement: Note Recovery
-The system SHALL allow an authenticated user to restore their own soft-deleted note, clearing its `deletedAt` timestamp so it becomes active again.
-
-A note that does not exist or belongs to a different user SHALL be rejected with `404 Not Found` (no existence/ownership disclosure). A note that exists, is owned by the caller, but is **not currently soft-deleted** SHALL be rejected with `409 Conflict` (nothing to restore).
-
-Automatic permanent purging of soft-deleted notes after any retention window is explicitly out of scope for this requirement — no such purge mechanism exists yet, so restore SHALL succeed for any soft-deleted note owned by the caller regardless of how long ago it was deleted.
-
-#### Scenario: Owner restores their soft-deleted note
-- **WHEN** an authenticated user restores a note id they own that is currently soft-deleted
-- **THEN** the system clears that note's deletedAt, and responds `200 OK` with the restored note's id, title, content, createdAt, and updatedAt
-
-#### Scenario: Restored note reappears in retrieval and listing
-- **WHEN** an authenticated user retrieves a note or requests their note list immediately after restoring it
-- **THEN** that note is present in the response as an active note
-
-#### Scenario: Restore of non-existent note rejected
-- **WHEN** an authenticated user attempts to restore a note id that does not exist
-- **THEN** the system rejects the request with `404 Not Found`
-
-#### Scenario: Restore of another user's note rejected identically to not-found
-- **WHEN** an authenticated user attempts to restore a note id owned by a different user
-- **THEN** the system rejects the request with `404 Not Found`, the same response used for a non-existent id
-
-#### Scenario: Restore of a not-deleted note rejected as a conflict
-- **WHEN** an authenticated user attempts to restore a note id they own that is currently active (not soft-deleted)
-- **THEN** the system rejects the request with `409 Conflict` and the note remains unchanged
-
-#### Scenario: Restore succeeds regardless of elapsed time since deletion
-- **WHEN** an authenticated user restores a note they own that was soft-deleted more than 30 days ago
-- **THEN** the system restores the note successfully, since no automatic purge process exists in this ticket

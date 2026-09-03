@@ -21,6 +21,7 @@ export * from './types/auth';
 
 // AB-1004 — Note DTOs + Zod schemas (SDS §55/§81). Consumed starting AB-1011/AB-1012 (frontend notes UI).
 // AB-1005 adds noteListQuerySchema (client-driven pagination/sorting query params).
+// AB-1006 adds tagIds/tags/tagId to the existing shapes (see schemas/notes.ts).
 export {
   createNoteRequestSchema,
   updateNoteRequestSchema,
@@ -29,4 +30,14 @@ export {
   noteListQuerySchema,
 } from './schemas/notes';
 export * from './types/notes';
+
+// AB-1006 — Tag DTOs + Zod schemas (SDS §55/§81). Consumed starting AB-1011/AB-1012.
+export {
+  createTagRequestSchema,
+  updateTagRequestSchema,
+  tagResponseSchema,
+  tagListResponseSchema,
+  tagRefSchema,
+} from './schemas/tags';
+export * from './types/tags';
 

@@ -24,7 +24,17 @@ public interface INoteRepository
     /// through. sortBy must be one of "createdAt"/"updatedAt"/"title"; sortDirection must be one
     /// of "asc"/"desc" — both are allowlisted upstream by NoteListQueryDto's [AllowedValues], and
     /// the implementation must still map them via an explicit switch, never a dynamic/reflection-
-    /// based column lookup (AGENTS.md §6, SDS §41/§59).
+    /// based column lookup (AGENTS.md §6, SDS §41/§59). tagId (AB-1006), when supplied, is already
+    /// validated as owned by userId — NoteService rejects an invalid one before this is called.
     /// </summary>
-    Task<(IReadOnlyList<Note> Items, int TotalCount)> GetPageForUserAsync(Guid userId, int page, int pageSize, string sortBy, string sortDirection, CancellationToken cancellationToken);
+    Task<(IReadOnlyList<Note> Items, int TotalCount)> GetPageForUserAsync(Guid userId, int page, int pageSize, string sortBy, string sortDirection, Guid? tagId, CancellationToken cancellationToken);
+
+    /// <summary>AB-1006: the note's currently assigned tags (empty if none). Backs GET/POST/PUT and restore's response mapping.</summary>
+    Task<IReadOnlyList<Tag>> GetTagsForNoteAsync(Guid noteId, CancellationToken cancellationToken);
+
+    /// <summary>AB-1006: batched form of GetTagsForNoteAsync for GET /api/notes — avoids one query per row. A noteId with no tags is simply absent from the result.</summary>
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<Tag>>> GetTagsForNotesAsync(IReadOnlyCollection<Guid> noteIds, CancellationToken cancellationToken);
+
+    /// <summary>AB-1006: deletes every existing NoteTags row for noteId and inserts one per (already-validated, already-deduplicated) id in tagIds — a full replace, never a diff. Staged on the same DbContext as the note write; persisted together by the caller's single SaveChangesAsync.</summary>
+    Task ReplaceTagsForNoteAsync(Guid noteId, IReadOnlyCollection<Guid> tagIds, CancellationToken cancellationToken);
 }

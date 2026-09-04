@@ -13,7 +13,7 @@ namespace NoteManagement.Tests.Integration.Api;
 public sealed class HealthEndpointTests
 {
     private const string TestConnectionString =
-        "Server=(localdb)\\MSSQLLocalDB;Database=NoteManagementDb_IntegrationTests;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True";
+        "Server=.\\SQLEXPRESS;Database=NoteManagementDb_IntegrationTests;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True";
 
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
@@ -23,7 +23,7 @@ public sealed class HealthEndpointTests
     [ClassInitialize]
     public static void ClassInitialize(TestContext context)
     {
-        // Isolated LocalDB database, distinct from the manual/dev database, per plan §3.
+        // Isolated SQL Server Express database, distinct from the manual/dev database, per plan §3.
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             builder.UseSetting("ConnectionStrings:DefaultConnection", TestConnectionString));
 

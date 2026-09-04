@@ -8,7 +8,7 @@ namespace NoteManagement.Tests.Integration.Infrastructure;
 public sealed class ApplicationDbContextTests
 {
     private const string TestConnectionString =
-        "Server=(localdb)\\MSSQLLocalDB;Database=NoteManagementDb_IntegrationTests;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True";
+        "Server=.\\SQLEXPRESS;Database=NoteManagementDb_IntegrationTests;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True";
 
     [TestMethod]
     public async Task CanConnectAsync_AfterMigration_ReturnsTrue()

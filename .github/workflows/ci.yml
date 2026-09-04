@@ -27,12 +27,38 @@ jobs:
 
   backend:
     name: Backend (build, migrate, test)
-    # windows-latest ships SQL Server Express LocalDB preinstalled — matches the
-    # LocalDB dev-environment decision exactly, no separate SQL Server service container needed.
-    runs-on: windows-latest
+    # LocalDB cannot host Full-Text Search (architectural — a per-user process, not a Windows
+    # service; SQL Server's Full-Text daemon requires the latter). This applies to every LocalDB
+    # instance, including windows-latest's preinstalled one, so AB-1007 (search) can no longer
+    # run this job there. Adopts the swap AB-1001's plan.md explicitly pre-flagged for this
+    # situation — see openspec/changes/ab-1007-search/plan.md §0 for the full reasoning.
+    runs-on: ubuntu-latest
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_PID: "Express"
+          # Ephemeral, CI-only container password — no persistent target, never reused as a real
+          # credential. Not a secret in the AGENTS.md §64/SDS §64 sense.
+          MSSQL_SA_PASSWORD: "CiOnly_P@ssw0rd1"
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P $MSSQL_SA_PASSWORD -C -Q 'SELECT 1' -b -o /dev/null"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 10s
     defaults:
       run:
         working-directory: apps/api
+    env:
+      # Overrides appsettings.Development.json.example's Windows-integrated-auth connection
+      # string below — the Linux service container has no Windows auth, so CI uses SQL auth
+      # against it instead. ASP.NET Core's env-var config provider (ConnectionStrings__* ->
+      # ConnectionStrings:*) takes precedence over the JSON file provisioned in the next step.
+      ConnectionStrings__DefaultConnection: "Server=localhost,1433;Database=NoteManagementDb;User Id=sa;Password=CiOnly_P@ssw0rd1;TrustServerCertificate=True"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -42,9 +68,10 @@ jobs:
         run: dotnet tool restore
       - name: Provision local dev config
         # appsettings.Development.json is gitignored (SDS §64) since it's the per-developer
-        # local file; the committed .example has no real secret (LocalDB uses Windows
-        # Integrated auth, no password) so it's safe to materialize as-is for CI.
-        run: Copy-Item src/NoteManagement.Api/appsettings.Development.json.example src/NoteManagement.Api/appsettings.Development.json
+        # local file; the committed .example has no real secret, so it's safe to materialize
+        # as-is for CI. Only its Jwt:* values are actually used here — the connection string is
+        # overridden by the job-level env var above.
+        run: cp src/NoteManagement.Api/appsettings.Development.json.example src/NoteManagement.Api/appsettings.Development.json
       - name: Restore
         run: dotnet restore NoteManagement.sln
       - name: Apply migrations

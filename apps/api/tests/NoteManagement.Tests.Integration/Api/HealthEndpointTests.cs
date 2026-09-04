@@ -6,14 +6,15 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using NoteManagement.Application.DTOs.Health;
 using NoteManagement.Infrastructure.Data;
+using NoteManagement.Tests.Integration.TestSupport;
 
 namespace NoteManagement.Tests.Integration.Api;
 
 [TestClass]
 public sealed class HealthEndpointTests
 {
-    private const string TestConnectionString =
-        "Server=.\\SQLEXPRESS;Database=NoteManagementDb_IntegrationTests;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True";
+    private static readonly string TestConnectionString =
+        TestConnectionStringFactory.ForDatabase("NoteManagementDb_IntegrationTests");
 
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 

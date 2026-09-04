@@ -40,6 +40,9 @@ public static class InfrastructureServiceCollectionExtensions
         // AB-1006: tags persistence.
         services.AddScoped<ITagRepository, TagRepository>();
 
+        // AB-1007: full-text search persistence.
+        services.AddScoped<ISearchRepository, SearchRepository>();
+
         var jwtSigningKey = configuration["Jwt:SigningKey"]
             ?? throw new InvalidOperationException(
                 "Configuration 'Jwt:SigningKey' not found. Copy appsettings.Development.json.example to appsettings.Development.json and fill it in.");

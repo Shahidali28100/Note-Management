@@ -41,3 +41,12 @@ export {
 } from './schemas/tags';
 export * from './types/tags';
 
+// AB-1007 — Search DTOs + Zod schemas (SDS §55/§81). Consumed starting AB-1013 (frontend search UI).
+export {
+  searchQuerySchema,
+  noteHighlightSchema,
+  searchResultSchema,
+  searchResponseSchema,
+} from './schemas/search';
+export * from './types/search';
+

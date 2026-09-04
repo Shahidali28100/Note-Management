@@ -9,14 +9,15 @@ using NoteManagement.Application.DTOs.Auth;
 using NoteManagement.Application.DTOs.Notes;
 using NoteManagement.Application.DTOs.Tags;
 using NoteManagement.Infrastructure.Data;
+using NoteManagement.Tests.Integration.TestSupport;
 
 namespace NoteManagement.Tests.Integration.Api;
 
 [TestClass]
 public sealed class NotesControllerTests
 {
-    private const string TestConnectionString =
-        "Server=(localdb)\\MSSQLLocalDB;Database=NoteManagementDb_NotesControllerTests;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True";
+    private static readonly string TestConnectionString =
+        TestConnectionStringFactory.ForDatabase("NoteManagementDb_NotesControllerTests");
 
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
@@ -26,7 +27,7 @@ public sealed class NotesControllerTests
     [ClassInitialize]
     public static void ClassInitialize(TestContext context)
     {
-        // Isolated LocalDB database, distinct from every other test class's.
+        // Isolated SQL Server Express database, distinct from every other test class's.
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             builder.UseSetting("ConnectionStrings:DefaultConnection", TestConnectionString));
 

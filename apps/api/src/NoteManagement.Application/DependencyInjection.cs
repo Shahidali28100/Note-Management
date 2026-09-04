@@ -12,6 +12,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<INoteService, NoteService>();
         services.AddScoped<ITagService, TagService>();
+        services.AddScoped<ISearchService, SearchService>();
         return services;
     }
 }

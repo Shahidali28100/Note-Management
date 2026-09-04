@@ -1,7 +1,7 @@
 {
-  "$comment": "Copy this file to appsettings.Development.json (gitignored) and fill in real local values.",
+  "$comment": "Copy this file to appsettings.Development.json (gitignored) and fill in real local values. DefaultConnection targets a local SQL Server Express instance (.\\SQLEXPRESS), not LocalDB — LocalDB cannot host Full-Text Search (AB-1007 plan.md §0). Install SQL Server Express (not just LocalDB) locally if you don't already have it.",
   "ConnectionStrings": {
-    "DefaultConnection": "Server=(localdb)\\MSSQLLocalDB;Database=NoteManagementDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True"
+    "DefaultConnection": "Server=.\\SQLEXPRESS;Database=NoteManagementDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True"
   },
   "Jwt": {
     "$comment": "Secret — never commit a real value. Generate a random 256-bit (32+ byte) key for local dev, e.g.: [Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Maximum 256 }))",

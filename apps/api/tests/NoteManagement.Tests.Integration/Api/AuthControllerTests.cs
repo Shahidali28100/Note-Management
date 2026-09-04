@@ -14,21 +14,22 @@ using Microsoft.IdentityModel.Tokens;
 using NoteManagement.Application.DTOs.Auth;
 using NoteManagement.Application.Interfaces;
 using NoteManagement.Infrastructure.Data;
+using NoteManagement.Tests.Integration.TestSupport;
 
 namespace NoteManagement.Tests.Integration.Api;
 
 [TestClass]
 public sealed class AuthControllerTests
 {
-    private const string TestConnectionString =
-        "Server=(localdb)\\MSSQLLocalDB;Database=NoteManagementDb_AuthControllerTests;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True";
+    private static readonly string TestConnectionString =
+        TestConnectionStringFactory.ForDatabase("NoteManagementDb_AuthControllerTests");
 
     // AB-1003: a separate factory/database/client whose IOtpGenerator is substituted with a
     // deterministic test double — the raw OTP is only ever logged, never returned via HTTP, so
     // any test that needs to complete a full reset (not just check forgot-password's response
     // shape) needs to know the code in advance. See SequentialOtpGenerator's remarks.
-    private const string OtpTestConnectionString =
-        "Server=(localdb)\\MSSQLLocalDB;Database=NoteManagementDb_AuthControllerTests_Otp;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True";
+    private static readonly string OtpTestConnectionString =
+        TestConnectionStringFactory.ForDatabase("NoteManagementDb_AuthControllerTests_Otp");
 
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
@@ -42,7 +43,7 @@ public sealed class AuthControllerTests
     [ClassInitialize]
     public static void ClassInitialize(TestContext context)
     {
-        // Isolated LocalDB database, distinct from HealthEndpointTests' and the manual/dev database.
+        // Isolated SQL Server Express database, distinct from HealthEndpointTests' and the manual/dev database.
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             builder.UseSetting("ConnectionStrings:DefaultConnection", TestConnectionString));
 

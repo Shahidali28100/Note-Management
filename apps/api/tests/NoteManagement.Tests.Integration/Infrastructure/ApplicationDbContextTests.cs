@@ -1,14 +1,15 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using NoteManagement.Infrastructure.Data;
+using NoteManagement.Tests.Integration.TestSupport;
 
 namespace NoteManagement.Tests.Integration.Infrastructure;
 
 [TestClass]
 public sealed class ApplicationDbContextTests
 {
-    private const string TestConnectionString =
-        "Server=(localdb)\\MSSQLLocalDB;Database=NoteManagementDb_IntegrationTests;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True";
+    private static readonly string TestConnectionString =
+        TestConnectionStringFactory.ForDatabase("NoteManagementDb_IntegrationTests");
 
     [TestMethod]
     public async Task CanConnectAsync_AfterMigration_ReturnsTrue()

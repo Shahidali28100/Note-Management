@@ -1,0 +1,166 @@
+openapi: 3.0.3
+info:
+  title: Note Taking Application API — AB-1007 delta
+  version: "0.7.0"
+  description: >
+    AB-1007 introduces a new `GET /api/search` operation: SQL Server
+    Full-Text Search over the caller's own notes (title + content). This is
+    a new capability, not a change to any existing `/api/notes` operation.
+paths:
+  /api/search:
+    get:
+      operationId: searchNotes
+      summary: Search the caller's active notes by keyword
+      description: >
+        Returns the authenticated caller's non-deleted notes whose title or
+        content matches every whitespace-separated term in `q` (an AND of
+        terms, with inflectional word-form matching), ranked by SQL Server
+        Full-Text Search relevance (best match first). Each result includes
+        a `highlight` object with sentinel-delimited excerpts safe for the
+        frontend to render without ever trusting note content as HTML.
+      tags: [search]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: >
+            Search keywords, whitespace-separated. Required; after
+            trimming leading/trailing whitespace must be 1-200 characters.
+            Missing, empty/whitespace-only, or over-length values are
+            rejected with 400.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+        - name: page
+          in: query
+          required: false
+          description: 1-based page number. Defaults to 1. Must be a valid integer >= 1; otherwise 400.
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          required: false
+          description: >
+            Items per page. Defaults to 20, capped at 100. A non-integer or
+            < 1 value is rejected with 400; a valid integer above 100 is
+            silently clamped to 100.
+          schema:
+            type: integer
+            minimum: 1
+            default: 20
+            maximum: 100
+      responses:
+        "200":
+          description: The caller's matching active notes for the requested page, ranked by relevance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+        "400":
+          description: >
+            Missing/empty/whitespace-only/over-length q, invalid page
+            (non-integer or < 1), or invalid pageSize (non-integer or < 1).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        "401":
+          description: Missing or invalid access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+components:
+  schemas:
+    TagRef:
+      type: object
+      required: [id, name, color]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        color:
+          type: string
+
+    NoteHighlight:
+      type: object
+      required: [title, content]
+      description: >
+        Plain-text excerpts with matched terms delimited by non-HTML
+        sentinel markers. Never contains HTML — the frontend escapes the
+        text first, then converts sentinels to <mark> (SDS §44/§60).
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+          description: Bounded excerpt of the note's content (at most 200 characters).
+
+    SearchResult:
+      type: object
+      required: [id, title, content, tags, createdAt, updatedAt, highlight]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        content:
+          type: string
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/TagRef'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        highlight:
+          $ref: '#/components/schemas/NoteHighlight'
+
+    SearchResponse:
+      type: object
+      required: [items, page, pageSize, totalCount, totalPages]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchResult'
+        page:
+          type: integer
+          example: 1
+        pageSize:
+          type: integer
+          example: 20
+        totalCount:
+          type: integer
+        totalPages:
+          type: integer
+
+    ProblemDetails:
+      type: object
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

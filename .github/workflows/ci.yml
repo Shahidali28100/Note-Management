@@ -27,14 +27,58 @@ jobs:
 
   backend:
     name: Backend (build, migrate, test)
-    # windows-latest ships SQL Server Express LocalDB preinstalled — matches the
-    # LocalDB dev-environment decision exactly, no separate SQL Server service container needed.
-    runs-on: windows-latest
+    # LocalDB cannot host Full-Text Search (architectural — a per-user process, not a Windows
+    # service; SQL Server's Full-Text daemon requires the latter). This applies to every LocalDB
+    # instance, including windows-latest's preinstalled one, so AB-1007 (search) can no longer
+    # run this job there. Adopts the swap AB-1001's plan.md explicitly pre-flagged for this
+    # situation — see openspec/changes/ab-1007-search/plan.md §0 for the full reasoning.
+    #
+    # NOT a `services:` container (unlike the first version of this job): a real CI run confirmed
+    # mcr.microsoft.com/mssql/server:2022-latest does not ship Full-Text Search at all (Error 7609,
+    # "Full-Text Search is not installed, or a full-text component cannot be loaded" on
+    # CREATE FULLTEXT INDEX — see openspec/changes/ab-1007-search/tasks.md Phase 4 "CI
+    # verification"). Full-Text Search is a separate package (mssql-server-fts) that must be
+    # installed before sqlservr's first start — there's no supported way to add it to an
+    # already-running instance — so GitHub's `services:` block (which only pulls a pre-built image
+    # and starts it before any job step runs) can't host it. This job instead builds a custom
+    # image from .github/docker/mssql-fts.Dockerfile and runs it as a normal container step.
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: apps/api
+    env:
+      # Overrides appsettings.Development.json.example's Windows-integrated-auth connection
+      # string below — the Linux container has no Windows auth, so CI uses SQL auth against it
+      # instead. ASP.NET Core's env-var config provider (ConnectionStrings__* ->
+      # ConnectionStrings:*) takes precedence over the JSON file provisioned further down.
+      ConnectionStrings__DefaultConnection: "Server=localhost,1433;Database=NoteManagementDb;User Id=sa;Password=CiOnly_P@ssw0rd1;TrustServerCertificate=True"
     steps:
       - uses: actions/checkout@v4
+      - name: Build SQL Server + Full-Text Search image
+        run: docker build -t sqlserver-fts -f .github/docker/mssql-fts.Dockerfile .github/docker
+      - name: Start SQL Server container
+        run: |
+          docker run -d --name sqlserver \
+            -e "ACCEPT_EULA=Y" \
+            -e "MSSQL_PID=Express" \
+            -e "MSSQL_SA_PASSWORD=CiOnly_P@ssw0rd1" \
+            -p 1433:1433 \
+            sqlserver-fts
+      - name: Wait for SQL Server to accept connections
+        # No `services:` block here to run this as an automatic health check (see reasoning
+        # above), so it's a manual bounded poll instead — same command/timeout budget the previous
+        # services:-based health-check used.
+        run: |
+          for i in $(seq 1 10); do
+            if docker exec sqlserver /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "CiOnly_P@ssw0rd1" -C -Q "SELECT 1" -b -o /dev/null; then
+              echo "SQL Server is ready"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::SQL Server did not become ready in time"
+          docker logs sqlserver
+          exit 1
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "9.0.x"
@@ -42,9 +86,10 @@ jobs:
         run: dotnet tool restore
       - name: Provision local dev config
         # appsettings.Development.json is gitignored (SDS §64) since it's the per-developer
-        # local file; the committed .example has no real secret (LocalDB uses Windows
-        # Integrated auth, no password) so it's safe to materialize as-is for CI.
-        run: Copy-Item src/NoteManagement.Api/appsettings.Development.json.example src/NoteManagement.Api/appsettings.Development.json
+        # local file; the committed .example has no real secret, so it's safe to materialize
+        # as-is for CI. Only its Jwt:* values are actually used here — the connection string is
+        # overridden by the job-level env var above.
+        run: cp src/NoteManagement.Api/appsettings.Development.json.example src/NoteManagement.Api/appsettings.Development.json
       - name: Restore
         run: dotnet restore NoteManagement.sln
       - name: Apply migrations
@@ -53,3 +98,6 @@ jobs:
         run: dotnet build NoteManagement.sln --no-restore
       - name: Test
         run: dotnet test NoteManagement.sln --no-build --collect:"XPlat Code Coverage"
+      - name: Stop SQL Server container
+        if: always()
+        run: docker rm -f sqlserver
